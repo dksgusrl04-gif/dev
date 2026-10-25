@@ -1,0 +1,1804 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>생산일정 재편성 콘솔</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* 레이아웃: 상단 GNB → 좌측 메뉴트리 + 본문(브레드크럼·페이지바·조회조건·그리드). 사내 업무시스템 관례. */
+:root{
+  /* 색상 토큰 — KRDS(대한민국 정부 디자인 시스템) 공개 팔레트 기준 */
+  --plane:#F4F5F6; --surface:#FFFFFF; --surface-2:#F4F5F6; --surface-3:#E6E8EA; --zebra:#FAFBFC;
+  --ink:#1E2124; --ink-2:#464C53; --ink-muted:#6D7882;
+  --line:#CDD1D5; --line-soft:#E6E8EA; --rail:#B1B8BE; --ring:rgba(30,33,36,.12);
+  --accent:#256EF4; --accent-dk:#0B50D0; --accent-soft:#ECF2FE;
+  --gnb:#052B57; --gnb-2:#063A74; --gnb-ink:#E8EEF6; --gnb-dim:#9FB4CC;
+  --good:#267337; --good-bg:#EAF6EC; --good-ink:#267337;
+  --warn:#8A5C00; --warn-bg:#FFF3DB;
+  --crit:#BD2C0F; --crit-bg:#FDEFEC;
+  --info:#096AB3; --info-bg:#E7F4FE;
+  /* 계열색 — 접근성 검증된 카테고리 팔레트 (간트 작업 구분용) */
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --s5:#e87ba4; --s6:#008300; --s7:#6250d6; --s8:#e34948;
+  --on-fill:#ffffff; --on-fill-dark:#0b0b0b;
+  --font-ui:"Noto Sans KR",Pretendard,"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  color-scheme: dark;
+  --plane:#11151A; --surface:#1A1F26; --surface-2:#21272F; --surface-3:#2A313A; --zebra:#1E242B;
+  --ink:#E9EDF2; --ink-2:#B1B8BE; --ink-muted:#8A949E;
+  --line:#343C45; --line-soft:#2A313A; --rail:#464C53; --ring:rgba(255,255,255,.12);
+  --accent:#4C87F6; --accent-dk:#256EF4; --accent-soft:#13233C;
+  --gnb:#03163A; --gnb-2:#052561; --gnb-ink:#DCE6F3; --gnb-dim:#8FA6C2;
+  --good:#5AC46E; --good-bg:#15301C; --good-ink:#5AC46E;
+  --warn:#E0A23A; --warn-bg:#33270D;
+  --crit:#F26B4E; --crit-bg:#3A1710;
+  --info:#55A8E6; --info-bg:#102636;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+  --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --plane:#11151A; --surface:#1A1F26; --surface-2:#21272F; --surface-3:#2A313A; --zebra:#1E242B;
+  --ink:#E9EDF2; --ink-2:#B1B8BE; --ink-muted:#8A949E;
+  --line:#343C45; --line-soft:#2A313A; --rail:#464C53; --ring:rgba(255,255,255,.12);
+  --accent:#4C87F6; --accent-dk:#256EF4; --accent-soft:#13233C;
+  --gnb:#03163A; --gnb-2:#052561; --gnb-ink:#DCE6F3; --gnb-dim:#8FA6C2;
+  --good:#5AC46E; --good-bg:#15301C; --good-ink:#5AC46E;
+  --warn:#E0A23A; --warn-bg:#33270D;
+  --crit:#F26B4E; --crit-bg:#3A1710;
+  --info:#55A8E6; --info-bg:#102636;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+  --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{background:var(--plane); color:var(--ink); font-family:var(--font-ui); font-size:13px; line-height:1.5;
+  margin:0; -webkit-font-smoothing:antialiased}
+body::before{content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px); z-index:40; background:var(--gnb)}
+h1,h2,h3{margin:0; text-wrap:balance}
+.mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+.num,td.n,th{font-variant-numeric:tabular-nums}
+
+/* ───── GNB ───── */
+.gnb{position:sticky; top:env(safe-area-inset-top,0px); z-index:30; background:var(--gnb); color:var(--gnb-ink);
+  border-bottom:2px solid var(--gnb-2)}
+.gnb-in{display:flex; align-items:center; gap:11px; min-height:46px; flex-wrap:wrap; padding-block:6px;
+  padding-left:max(16px, env(safe-area-inset-left,0px));
+  padding-right:max(16px, env(safe-area-inset-right,0px))}
+.gnb .sys{display:flex; align-items:center; gap:9px; min-width:0}
+.gnb .mark{width:21px; height:21px; border-radius:3px; background:var(--gnb-ink); color:var(--gnb);
+  display:grid; place-items:center; font-size:11px; font-weight:700; font-family:var(--font-mono); flex:none}
+.gnb .sys b{font-size:14.5px; font-weight:700; letter-spacing:-.01em; white-space:nowrap}
+.gnb .sys span{font-size:11.5px; color:var(--gnb-dim); white-space:nowrap}
+.gnb .right{margin-left:auto; display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.gnb .env{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.04em;
+  padding:3px 7px; border-radius:3px; background:rgba(255,255,255,.14); color:var(--gnb-ink)}
+.gnb .who{font-size:11.5px; color:var(--gnb-dim); white-space:nowrap}
+.gnb button{appearance:none; font:inherit; font-size:11.5px; padding:4px 9px; border-radius:3px; cursor:pointer;
+  border:1px solid rgba(255,255,255,.26); background:transparent; color:var(--gnb-ink)}
+.gnb button:hover{background:rgba(255,255,255,.14)}
+.gnb button:focus-visible{outline:2px solid #fff; outline-offset:1px}
+
+/* ───── 본문 셸 ───── */
+.shell{display:grid; grid-template-columns:214px minmax(0,1fr); align-items:start}
+.lnb{background:var(--surface); border-right:1px solid var(--line); min-width:0}
+.lnb-in{position:sticky; top:calc(env(safe-area-inset-top,0px) + 50px); padding-block:10px 16px}
+.lnb-grp{font-size:10.5px; font-weight:700; letter-spacing:.07em; color:var(--ink-muted);
+  padding:8px 14px 5px; text-transform:uppercase}
+.lnb-item{display:flex; align-items:center; gap:8px; width:100%; appearance:none; border:0; background:transparent;
+  font:inherit; font-size:12.5px; color:var(--ink-2); padding:7px 14px; cursor:pointer; text-align:left;
+  border-left:3px solid transparent}
+.lnb-item .no{font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--ink-muted);
+  width:15px; flex:none}
+.lnb-item:hover{background:var(--surface-2); color:var(--ink)}
+.lnb-item[aria-selected="true"]{background:var(--accent-soft); color:var(--accent-dk); font-weight:700;
+  border-left-color:var(--accent)}
+.lnb-item[aria-selected="true"] .no{color:var(--accent-dk)}
+.lnb-item:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+main{min-width:0; padding-block:0 26px;
+  padding-left:max(16px, env(safe-area-inset-left,0px));
+  padding-right:max(16px, env(safe-area-inset-right,0px))}
+
+/* ───── 브레드크럼 · 페이지바 ───── */
+.crumb{font-size:11.5px; color:var(--ink-muted); padding-block:10px 0; display:flex; gap:6px; flex-wrap:wrap}
+.crumb i{font-style:normal; color:var(--rail)}
+.crumb b{color:var(--ink-2); font-weight:500}
+.pagebar{display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; padding-block:4px 11px;
+  border-bottom:2px solid var(--ink); margin-bottom:13px}
+.pagebar h1{font-size:19px; font-weight:700; letter-spacing:-.02em}
+.pagebar p{margin:2px 0 0; font-size:12px; color:var(--ink-muted); flex:1 1 230px; min-width:0}
+.pagebar .meta{display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+
+/* ───── KPI ───── */
+.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); gap:0; margin-bottom:14px;
+  border:1px solid var(--line); border-radius:4px; overflow:hidden; background:var(--surface)}
+.kpi{padding:9px 12px; border-left:1px solid var(--line-soft); min-width:0}
+.kpi:first-child{border-left:0}
+.kpi .k{font-size:11px; color:var(--ink-muted); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.kpi .v{font-family:var(--font-mono); font-size:25px; font-weight:600; letter-spacing:-.025em; line-height:1.2; margin-top:2px}
+.kpi .d{font-size:11px; color:var(--ink-muted); display:flex; align-items:center; gap:5px; flex-wrap:wrap}
+.delta{font-family:var(--font-mono); font-weight:600; font-size:11px}
+.delta.up{color:var(--crit)} .delta.down{color:var(--good-ink)} .delta.flat{color:var(--ink-muted)}
+
+/* ───── 패널 ───── */
+.card{background:var(--surface); border:1px solid var(--line); border-radius:4px; margin-bottom:14px; min-width:0}
+.card > .ch{display:flex; align-items:center; gap:9px; flex-wrap:wrap; padding:8px 12px;
+  border-bottom:1px solid var(--line); background:var(--surface-2)}
+.card > .ch h2{font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:7px; white-space:nowrap}
+.card > .ch h2::before{content:""; width:3px; height:11px; background:var(--accent); flex:none}
+.card > .ch p{margin:0; font-size:11.5px; color:var(--ink-muted); flex:1 1 200px; min-width:0; line-height:1.45}
+.card > .cb{padding:12px}
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; align-items:start}
+.sub{font-size:11px; font-weight:700; color:var(--ink-2); margin-bottom:6px; display:flex; align-items:center; gap:6px}
+.sub::before{content:"▪"; color:var(--accent); font-size:10px}
+
+/* ───── 조회조건 영역 ───── */
+.srch{border:1px solid var(--line); border-radius:4px; overflow:hidden; background:var(--surface)}
+.srch-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(272px,1fr))}
+.srch-row{display:grid; grid-template-columns:98px minmax(0,1fr); border-bottom:1px solid var(--line-soft);
+  border-right:1px solid var(--line-soft); min-width:0}
+.srch-row .lb{background:var(--surface-2); padding:7px 10px; font-size:11.5px; font-weight:600; color:var(--ink-2);
+  display:flex; align-items:center; border-right:1px solid var(--line-soft)}
+.srch-row .fd{padding:6px 9px; min-width:0; display:flex; flex-direction:column; gap:3px;
+  justify-content:center; align-items:flex-start}
+.srch-row .fd > input,.srch-row .fd > select,.srch-row .fd > .hint{width:100%}
+.srch-act{display:flex; justify-content:flex-end; align-items:center; gap:6px; padding:8px 10px;
+  background:var(--surface-2); border-top:1px solid var(--line)}
+.srch-act .spacer{margin-right:auto; font-size:11.5px; color:var(--ink-muted)}
+.hint{font-size:11px; color:var(--ink-muted); line-height:1.45}
+
+/* ───── 그리드(표) ───── */
+.tbl-scroll{overflow-x:auto; border:1px solid var(--line); border-radius:3px}
+table{border-collapse:collapse; width:100%; font-size:12px; min-width:440px; background:var(--surface)}
+th,td{border:1px solid var(--line-soft); padding:5px 9px; text-align:right; white-space:nowrap}
+th{background:var(--surface-3); color:var(--ink-2); font-weight:700; font-size:11px; position:sticky; top:0;
+  border-color:var(--line)}
+th:first-child,td:first-child{text-align:left}
+tbody tr:nth-child(even) td{background:var(--zebra)}
+tbody tr:hover td{background:var(--accent-soft)}
+td.n{font-family:var(--font-mono)}
+.dot{width:9px; height:9px; border-radius:2px; display:inline-block; vertical-align:-1px; margin-right:6px;
+  box-shadow:0 0 0 1px var(--ring)}
+.tag{font-size:10.5px; font-weight:700; padding:2px 6px; border-radius:2px; display:inline-flex; align-items:center;
+  gap:3px; border:1px solid transparent; white-space:nowrap}
+.tag.ok{background:var(--good-bg); color:var(--good-ink); border-color:color-mix(in srgb,var(--good) 34%,transparent)}
+.tag.bad{background:var(--crit-bg); color:var(--crit); border-color:color-mix(in srgb,var(--crit) 34%,transparent)}
+.tag.hold{background:var(--warn-bg); color:var(--warn); border-color:color-mix(in srgb,var(--warn) 34%,transparent)}
+.tag.urg{background:var(--info-bg); color:var(--info); border-color:color-mix(in srgb,var(--info) 34%,transparent)}
+
+/* ───── 폼 ───── */
+.field{display:flex; flex-direction:column; gap:3px; margin-bottom:9px; min-width:0}
+.field > label{font-size:11.5px; font-weight:600; color:var(--ink-2)}
+input[type=number],input[type=text],input[type=password],select,textarea{appearance:none; width:100%; font:inherit; font-size:12.5px;
+  padding:5px 8px; border:1px solid var(--rail); border-radius:3px; background:var(--surface); color:var(--ink)}
+input[type=number],select{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+select{padding-right:6px}
+textarea{font-family:var(--font-ui); resize:vertical; min-height:66px; line-height:1.5}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent)}
+input[type=range]{width:100%; accent-color:var(--accent); padding:0; border:0; background:transparent}
+.row{display:flex; gap:9px; flex-wrap:wrap}
+.row > *{flex:1 1 118px; min-width:0}
+.btn{appearance:none; font:inherit; font-size:12.5px; font-weight:700; padding:6px 15px; border-radius:3px;
+  cursor:pointer; border:1px solid var(--accent); background:var(--accent); color:#fff; white-space:nowrap}
+.btn:hover{background:var(--accent-dk); border-color:var(--accent-dk)}
+.btn.ghost{background:var(--surface); border-color:var(--rail); color:var(--ink-2)}
+.btn.ghost:hover{background:var(--surface-2); color:var(--ink); border-color:var(--ink-muted)}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.btnrow{display:flex; gap:6px; flex-wrap:wrap; margin-top:2px}
+.seg{display:inline-flex; border:1px solid var(--rail); border-radius:3px; overflow:hidden; background:var(--surface)}
+.seg button{appearance:none; border:0; background:transparent; font:inherit; font-size:11.5px; font-weight:500;
+  padding:5px 11px; color:var(--ink-2); cursor:pointer; white-space:nowrap; border-left:1px solid var(--line-soft)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent); color:#fff; font-weight:700}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.chip{font-family:var(--font-mono); font-size:11px; font-weight:500; padding:3px 8px; border-radius:3px;
+  background:var(--surface-2); border:1px solid var(--line-soft); color:var(--ink-2); white-space:nowrap}
+.chip b{color:var(--ink); font-weight:700}
+
+/* ───── 간트 ───── */
+.gantt-head{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:8px}
+.legend{display:flex; gap:3px 13px; flex-wrap:wrap; font-size:11px; color:var(--ink-2); margin-top:8px;
+  padding:7px 9px; background:var(--surface-2); border:1px solid var(--line-soft); border-radius:3px}
+.legend span{display:inline-flex; align-items:center; gap:5px; white-space:nowrap}
+.gantt-rail{overflow-x:auto; border:1px solid var(--line); border-radius:3px; background:var(--surface-2)}
+.gantt-rail svg{display:block}
+.tip{position:fixed; z-index:50; pointer-events:none; background:var(--surface); border:1px solid var(--ink-muted);
+  border-radius:3px; box-shadow:0 4px 14px rgba(0,0,0,.18); padding:7px 9px; font-size:11.5px; max-width:250px;
+  opacity:0; transition:opacity .08s}
+.tip[data-on="1"]{opacity:1}
+.tip b{display:block; font-size:12px; margin-bottom:3px}
+.tip dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:1px 9px; font-family:var(--font-mono);
+  font-size:11px; font-variant-numeric:tabular-nums}
+.tip dt{color:var(--ink-muted)} .tip dd{margin:0; text-align:right}
+
+/* ───── 리포트 · 기타 ───── */
+.chips{display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px}
+.chips button{appearance:none; font:inherit; font-size:11.5px; padding:5px 10px; border-radius:3px; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface-2); color:var(--ink-2); text-align:left}
+.chips button:hover{border-color:var(--accent); color:var(--accent-dk); background:var(--accent-soft)}
+.chips button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.report{border:1px solid var(--line); border-radius:3px; background:var(--surface); overflow:hidden}
+.report .rh{display:flex; align-items:center; gap:7px; padding:7px 11px; border-bottom:1px solid var(--line);
+  background:var(--surface-2); font-size:11.5px; font-weight:700; color:var(--ink-2)}
+.report .rb{padding:12px}
+.rsec{margin-bottom:13px} .rsec:last-child{margin-bottom:0}
+.rsec h4{margin:0 0 5px; font-size:11.5px; font-weight:700; display:flex; align-items:center; gap:6px;
+  color:var(--ink); padding-bottom:4px; border-bottom:1px solid var(--line-soft)}
+.rsec h4::before{content:""; width:3px; height:10px; background:var(--accent); flex:none}
+.rsec p{margin:0 0 5px; font-size:12.5px; color:var(--ink-2); line-height:1.65}
+.rsec ul{margin:0; padding-left:16px; font-size:12.5px; color:var(--ink-2); line-height:1.65}
+.rsec li{margin-bottom:3px}
+.rsec strong{color:var(--ink); font-weight:700}
+.rsec .mono{font-size:12px}
+.empty{text-align:center; padding:24px 14px; color:var(--ink-muted); font-size:12.5px}
+.note{font-size:11.5px; color:var(--ink-muted); line-height:1.6; margin-top:8px; padding:8px 10px;
+  background:var(--info-bg); border:1px solid color-mix(in srgb,var(--info) 24%,transparent); border-radius:3px}
+.evlist{display:flex; flex-direction:column; gap:0; border:1px solid var(--line); border-radius:3px; overflow:hidden}
+.ev{display:flex; align-items:center; gap:9px; padding:7px 10px; font-size:12px; background:var(--surface);
+  border-bottom:1px solid var(--line-soft); flex-wrap:wrap}
+.ev:last-child{border-bottom:0}
+.ev:nth-child(even){background:var(--zebra)}
+.ev .x{margin-left:auto; appearance:none; border:1px solid var(--rail); background:var(--surface); color:var(--ink-muted);
+  cursor:pointer; font-size:12px; line-height:1; padding:3px 7px; border-radius:2px}
+.ev .x:hover{background:var(--crit-bg); color:var(--crit); border-color:var(--crit)}
+.bar-track{height:8px; border-radius:2px; background:var(--surface-3); overflow:hidden; min-width:50px}
+.bar-fill{height:100%; border-radius:2px}
+footer{border-top:1px solid var(--line); margin-top:4px; padding-block:12px 4px; font-size:11px;
+  color:var(--ink-muted); line-height:1.65}
+
+
+/* ───── 서버 연결 · 알림 · 대화 (추가) ───── */
+.srv{font-family:var(--font-mono); font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:3px;
+  display:inline-flex; align-items:center; gap:6px; white-space:nowrap; background:rgba(255,255,255,.12); color:var(--gnb-ink)}
+.srv::before{content:""; width:7px; height:7px; border-radius:50%; background:#9FB4CC}
+.srv[data-s="ok"]::before{background:#5AC46E} .srv[data-s="off"]::before{background:#F26B4E}
+.srv[data-s="connecting"]::before{background:#E0A23A; animation:pulse 1s infinite alternate}
+@keyframes pulse{from{opacity:.35}to{opacity:1}}
+.spin{display:inline-block; width:10px; height:10px; border:2px solid var(--line); border-top-color:var(--accent);
+  border-radius:50%; animation:rot .7s linear infinite; vertical-align:-1px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.alerts{display:flex; flex-direction:column; gap:6px; margin-bottom:10px}
+.alerts:empty{display:none}
+.alert{display:flex; gap:8px; align-items:flex-start; font-size:12px; line-height:1.55; padding:7px 10px; border-radius:3px;
+  border:1px solid var(--line); background:var(--surface)}
+.alert b{flex:none}
+.alert .x{margin-left:auto; appearance:none; border:0; background:transparent; color:var(--ink-muted); cursor:pointer; font-size:14px; line-height:1}
+.alert.err{background:var(--crit-bg); border-color:color-mix(in srgb,var(--crit) 40%,transparent); color:var(--crit)}
+.alert.warn{background:var(--warn-bg); border-color:color-mix(in srgb,var(--warn) 40%,transparent); color:var(--warn)}
+.alert.ok{background:var(--good-bg); border-color:color-mix(in srgb,var(--good) 40%,transparent); color:var(--good-ink)}
+.alert.info{background:var(--info-bg); border-color:color-mix(in srgb,var(--info) 40%,transparent); color:var(--info)}
+.msgs{display:flex; flex-direction:column; gap:6px; margin-top:8px}
+.msgs:empty{display:none}
+.statusline{display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px; font-size:11.5px; color:var(--ink-muted)}
+details.fold{border:1px solid var(--line); border-radius:4px; background:var(--surface); margin-bottom:14px}
+details.fold > summary{cursor:pointer; padding:8px 12px; font-size:12.5px; font-weight:700; background:var(--surface-2);
+  border-radius:4px; list-style-position:inside}
+details.fold[open] > summary{border-bottom:1px solid var(--line); border-radius:4px 4px 0 0}
+details.fold > .cb{padding:12px}
+.chat{display:flex; flex-direction:column; gap:12px}
+.msg{border:1px solid var(--line); border-radius:4px; background:var(--surface); overflow:hidden}
+.msg.user{align-self:flex-end; max-width:min(640px,100%); background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.msg.user .mb{font-size:12.5px; color:var(--ink); white-space:pre-wrap}
+.msg .mh{display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:6px 11px; border-bottom:1px solid var(--line-soft);
+  background:var(--surface-2); font-size:11px; color:var(--ink-muted)}
+.msg.user .mh{background:transparent; border-bottom:0; padding-bottom:0}
+.msg .mb{padding:10px 12px}
+.md{font-size:12.5px; line-height:1.7; color:var(--ink-2)}
+.md p{margin:0 0 7px} .md ul,.md ol{margin:0 0 7px; padding-left:18px} .md li{margin-bottom:2px}
+.md h4{margin:8px 0 4px; font-size:12.5px; color:var(--ink)} .md strong{color:var(--ink)}
+.md code{font-size:11.5px; background:var(--surface-2); padding:0 4px; border-radius:2px}
+.tools{margin-top:10px; border:1px solid var(--line-soft); border-radius:3px}
+.tools > summary{cursor:pointer; padding:6px 9px; font-size:11.5px; font-weight:600; color:var(--ink-2); background:var(--surface-2)}
+.tools .tc{padding:7px 9px; border-top:1px solid var(--line-soft); font-size:11.5px}
+.tools pre{margin:5px 0 0; max-height:240px; overflow:auto; font-family:var(--font-mono); font-size:10.5px; line-height:1.5;
+  background:var(--surface-2); border:1px solid var(--line-soft); border-radius:3px; padding:6px 8px; white-space:pre-wrap; word-break:break-all}
+.typing{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-muted)}
+dialog{border:1px solid var(--line); border-radius:6px; padding:0; width:min(480px,calc(100vw - 32px));
+  background:var(--surface); color:var(--ink); box-shadow:0 12px 40px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(5,20,40,.45)}
+dialog .dh{display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); background:var(--surface-2)}
+dialog .dh h2{font-size:13.5px; font-weight:700}
+dialog .db{padding:14px}
+dialog .df{display:flex; justify-content:flex-end; gap:6px; padding:10px 14px; border-top:1px solid var(--line); background:var(--surface-2)}
+.kv{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:12px; margin-bottom:12px}
+.kv dt{color:var(--ink-muted)} .kv dd{margin:0}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .lnb{border-right:0; border-bottom:1px solid var(--line); position:sticky;
+    top:calc(env(safe-area-inset-top,0px) + 46px); z-index:20}
+  .lnb-in{position:static; display:flex; overflow-x:auto; padding:0; scrollbar-width:none}
+  .lnb-in::-webkit-scrollbar{display:none}
+  .lnb-grp{display:none}
+  .lnb-item{width:auto; white-space:nowrap; border-left:0; border-bottom:3px solid transparent; padding:9px 12px}
+  .lnb-item[aria-selected="true"]{border-left-color:transparent; border-bottom-color:var(--accent)}
+}
+@media (max-width:560px){
+  .kpi .v{font-size:21px}
+  .srch-row{grid-template-columns:86px minmax(0,1fr)}
+  .pagebar h1{font-size:17px}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important} }
+</style>
+</head>
+<body>
+
+<div class="gnb"><div class="gnb-in">
+  <div class="sys">
+    <span class="mark" aria-hidden="true">PS</span>
+    <b>생산일정 재편성 시스템</b>
+    <span>Production Rescheduling Console</span>
+  </div>
+  <div class="right">
+    <span class="env">DEMO</span>
+    <span class="chip" id="dsChip">OR-Library <b>ft06</b></span>
+    <span class="srv" id="srvChip" data-s="connecting">서버 연결 중</span>
+    <span class="who">생산관리팀 / 시연계정</span>
+    <button type="button" id="apiBtn">API 설정</button>
+    <button type="button" id="themeBtn">화면모드</button>
+  </div>
+</div></div>
+
+<div class="shell">
+  <aside class="lnb"><nav class="lnb-in" role="tablist" aria-label="업무 메뉴">
+    <div class="lnb-grp">기준정보관리</div>
+    <button class="lnb-item" role="tab" id="t-data" aria-controls="p-data"><span class="no">01</span>주문·설비 기준정보</button>
+    <div class="lnb-grp">생산계획수립</div>
+    <button class="lnb-item" role="tab" id="t-plan" aria-controls="p-plan"><span class="no">02</span>초기 생산일정 수립</button>
+    <button class="lnb-item" role="tab" id="t-event" aria-controls="p-event"><span class="no">03</span>돌발상황 일정 재편성</button>
+    <div class="lnb-grp">실적·분석</div>
+    <button class="lnb-item" role="tab" id="t-diff" aria-controls="p-diff"><span class="no">04</span>변경 전후 일정 비교</button>
+    <button class="lnb-item" role="tab" id="t-agent" aria-controls="p-agent"><span class="no">05</span>일정 변경 영향 분석</button>
+  </nav></aside>
+
+  <main>
+    <div class="crumb" id="crumb"></div>
+    <div class="pagebar">
+      <div style="min-width:0">
+        <h1 id="pageTitle">주문·설비 기준정보</h1>
+        <p id="pageDesc"></p>
+      </div>
+      <div class="meta">
+        <span class="chip" id="calcChip"></span>
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+    <div class="alerts" id="alerts" aria-live="polite"></div>
+
+    <!-- ① 기준정보 -->
+    <section id="p-data" role="tabpanel" aria-labelledby="t-data">
+      <div class="card"><div class="ch">
+        <h2>조회 조건</h2>
+        <p>공정 순서·설비·처리시간은 OR-Library 원본값입니다. 납기·우선순위·투입시각은 원본에 없어 본 화면에서 부여합니다.</p>
+      </div><div class="cb">
+        <div class="srch"><div class="srch-grid">
+          <div class="srch-row"><div class="lb">문제 인스턴스</div><div class="fd">
+            <select id="instSel"></select></div></div>
+          <div class="srch-row"><div class="lb">우선순위 규칙</div><div class="fd">
+            <select id="ruleSel"></select></div></div>
+          <div class="srch-row"><div class="lb">납기 여유계수</div><div class="fd">
+            <input type="range" id="kSlider" min="1" max="3" step="0.05" value="1.3">
+            <span class="hint">k = <span class="mono" id="kVal">1.30</span> · 납기 = ⌈총가공시간 × k⌉ · 1.2~1.5 권장</span></div></div>
+          <div class="srch-row"><div class="lb">계산 엔진</div><div class="fd">
+            <div class="seg" role="group" aria-label="계산 엔진">
+              <button type="button" id="solCp" aria-pressed="true">CP-SAT 최적해</button>
+              <button type="button" id="solHe" aria-pressed="false">휴리스틱</button>
+              <button type="button" id="solRu" aria-pressed="false">규칙 단독</button>
+            </div>
+            <span class="hint" id="solHint"></span></div></div>
+          <div class="srch-row"><div class="lb">목적함수</div><div class="fd">
+            <div class="seg" role="group">
+              <button type="button" id="objTard" aria-pressed="true">납기지연 최소</button>
+              <button type="button" id="objMk" aria-pressed="false">완료시간 최소</button>
+            </div>
+            <span class="hint" id="objHint"></span></div></div>
+          <div class="srch-row"><div class="lb">제한 시간</div><div class="fd">
+            <input type="number" id="tlIn" value="10" min="1" max="60" step="1" style="width:90px">
+            <span class="hint">탐색 제한(초). CP-SAT 가 시간 안에 최적을 증명 못 하면 그때까지의 최선해를 씁니다. 휴리스틱은 최대 5초.</span></div></div>
+          <div class="srch-row"><div class="lb">데이터 출처</div><div class="fd">
+            <span class="hint" id="instRef"></span></div></div>
+        </div><div class="srch-act">
+          <span class="spacer" id="catalogHint">내장 인스턴스 5개</span>
+          <button class="btn ghost" type="button" id="resetAll">전체 초기화</button>
+        </div></div>
+      </div></div>
+
+      <div class="grid2">
+        <div class="card"><div class="ch"><h2>주문 정보</h2><p>납기·투입시각·우선순위 수정 가능</p></div><div class="cb">
+          <div class="tbl-scroll"><table id="orderTbl"></table></div>
+          <div class="note">우선순위 1은 긴급, 3은 여유입니다. 같은 설비를 두 작업이 동시에 쓸 수 없고 공정 순서는 바꿀 수 없다는 제약 아래 일정을 계산합니다.</div>
+        </div></div>
+        <div class="card"><div class="ch"><h2>공정 라우팅</h2><p>설비번호 · 처리시간 (원본값)</p></div><div class="cb">
+          <div class="tbl-scroll"><table id="routeTbl"></table></div>
+        </div></div>
+      </div>
+      <div class="card"><div class="ch"><h2>설비 정보</h2><p>설비별 담당 공정과 가동 불가 시간 · 가동 중단은 [03] 화면에서 등록합니다</p></div><div class="cb">
+        <div class="tbl-scroll"><table id="machInfoTbl"></table></div>
+      </div></div>
+    </section>
+
+    <!-- ② 초기 일정 -->
+    <section id="p-plan" role="tabpanel" aria-labelledby="t-plan" hidden>
+      <div class="card"><div class="ch"><h2>설비별 생산일정 (간트)</h2><p id="planMeta"></p></div><div class="cb">
+        <div class="statusline" id="planStatus"></div>
+        <div class="gantt-head">
+          <div class="seg" role="group">
+            <button type="button" id="gvM" aria-pressed="true">설비별</button>
+            <button type="button" id="gvJ" aria-pressed="false">주문별</button>
+          </div>
+          <div class="seg" role="group" aria-label="목적함수">
+            <button type="button" id="objTard2" aria-pressed="true">납기지연 최소</button>
+            <button type="button" id="objMk2" aria-pressed="false">완료시간 최소</button>
+          </div>
+          <span class="chip" id="planRuleChip"></span>
+        </div>
+        <div class="gantt-rail" id="ganttBase"></div>
+        <div class="legend" id="legendBase"></div>
+      </div></div>
+
+      <div class="grid2">
+        <div class="card"><div class="ch"><h2>주문별 완료예정 · 납기준수</h2></div><div class="cb">
+          <div class="tbl-scroll"><table id="jobTbl"></table></div></div></div>
+        <div class="card"><div class="ch"><h2>설비별 작업부하 · 유휴시간</h2></div><div class="cb">
+          <div class="tbl-scroll"><table id="machTbl"></table></div></div></div>
+      </div>
+
+      <details class="fold"><summary>공정별 일정표 (주문 · 공정 · 설비 · 시작 · 종료)</summary><div class="cb">
+        <div class="tbl-scroll" style="max-height:420px"><table id="opTbl"></table></div>
+      </div></details>
+
+      <div class="card"><div class="ch"><h2>우선순위 규칙별 성능비교</h2>
+        <p>동일 데이터에 규칙만 바꿔 1회 배정한 결과 (브라우저에서 즉시 계산) · 위 일정은 선택한 계산 엔진의 결과입니다</p></div><div class="cb">
+        <div class="tbl-scroll"><table id="ruleTbl"></table></div>
+      </div></div>
+    </section>
+
+    <!-- ③ 재편성 -->
+    <section id="p-event" role="tabpanel" aria-labelledby="t-event" hidden>
+      <div class="grid2">
+        <div class="card"><div class="ch"><h2>설비 고장 · 가동중단 등록</h2></div><div class="cb">
+          <div class="srch"><div class="srch-grid">
+            <div class="srch-row"><div class="lb">대상 설비</div><div class="fd"><select id="bdM"></select></div></div>
+            <div class="srch-row"><div class="lb">시작 시각</div><div class="fd"><input type="number" id="bdS" value="10" min="0" step="1"></div></div>
+            <div class="srch-row"><div class="lb">중단 시간</div><div class="fd"><input type="number" id="bdD" value="14" min="1" step="1"></div></div>
+          </div><div class="srch-act"><button class="btn" type="button" id="addBd">등록</button></div></div>
+          <div class="msgs" id="bdMsg"></div>
+        </div></div>
+        <div class="card"><div class="ch"><h2>긴급 주문 등록</h2></div><div class="cb">
+          <div class="srch"><div class="srch-grid">
+            <div class="srch-row"><div class="lb">투입 시각</div><div class="fd"><input type="number" id="uoR" value="10" min="0" step="1"></div></div>
+            <div class="srch-row"><div class="lb">납기</div><div class="fd"><input type="number" id="uoD" value="40" min="1" step="1"></div></div>
+            <div class="srch-row"><div class="lb">공정 수</div><div class="fd"><input type="number" id="uoN" value="4" min="1" max="20" step="1"></div></div>
+          </div><div class="srch-act">
+            <span class="spacer">라우팅은 설비 순서 무작위 · 처리시간 3~10</span>
+            <button class="btn" type="button" id="addUo">등록</button></div></div>
+          <div class="msgs" id="uoMsg"></div>
+        </div></div>
+      </div>
+
+      <div class="card"><div class="ch"><h2>재편성 실행</h2>
+        <p>기준시각 이전에 착수한 작업은 중단하지 않고 유지(비선점)하며, 미착수 작업만 다시 배정합니다.</p></div><div class="cb">
+        <div class="srch"><div class="srch-grid" style="grid-template-columns:minmax(0,1fr)">
+          <div class="srch-row"><div class="lb">기준시각 t</div><div class="fd">
+            <input type="range" id="nowS" min="0" max="60" step="1" value="10">
+            <span class="hint">t = <span class="mono" id="nowVal">10</span> · <span id="frozenHint"></span></span>
+          </div></div>
+        </div><div class="srch-act">
+          <button class="btn ghost" type="button" id="resetRe">초기화</button>
+          <button class="btn" type="button" id="runRe">잔여 일정 재계산</button>
+        </div></div>
+        <div class="sub" style="margin-top:12px">등록된 돌발상황</div>
+        <div class="evlist" id="evList"></div>
+      </div></div>
+
+      <div class="card" id="reCard" hidden><div class="ch"><h2>재편성 결과</h2><p id="reMeta"></p></div><div class="cb">
+        <div class="statusline" id="reStatus"></div>
+        <div class="msgs" id="reNotes" style="margin:0 0 10px"></div>
+        <div class="gantt-head">
+          <div class="seg" role="group">
+            <button type="button" id="gvM2" aria-pressed="true">설비별</button>
+            <button type="button" id="gvJ2" aria-pressed="false">주문별</button>
+          </div>
+        </div>
+        <div class="gantt-rail" id="ganttRe"></div>
+        <div class="legend" id="legendRe"></div>
+      </div></div>
+    </section>
+
+    <!-- ④ 비교 -->
+    <section id="p-diff" role="tabpanel" aria-labelledby="t-diff" hidden>
+      <div id="diffEmpty" class="card"><div class="cb"><div class="empty">
+        [03] 돌발상황 일정 재편성 화면에서 재계산을 실행하면 변경 전후를 비교합니다.
+      </div></div></div>
+      <div id="diffBody" hidden>
+        <div class="card"><div class="ch"><h2>주문별 납기지연 변경 전후</h2>
+          <p id="tardMeta"></p></div><div class="cb">
+          <div class="gantt-rail" id="tardChart"></div>
+          <div class="legend"><span><i class="dot" style="background:var(--rail)"></i>변경 전 지연</span>
+            <span><i class="dot" style="background:var(--crit)"></i>변경 후 지연</span></div>
+        </div></div>
+        <div class="card"><div class="ch"><h2>주문별 완료시각 변화</h2>
+          <p>위 막대가 변경 전, 아래 막대가 변경 후 · ▼ 는 납기 시각</p></div><div class="cb">
+          <div class="gantt-rail" id="diffChart"></div>
+        </div></div>
+        <div class="card"><div class="ch"><h2>주문별 지연 비교</h2></div><div class="cb">
+          <div class="tbl-scroll"><table id="diffTbl"></table></div>
+        </div></div>
+        <div class="grid2">
+          <div class="card"><div class="ch"><h2>변경 전 일정</h2></div><div class="cb">
+            <div class="gantt-rail" id="ganttA"></div></div></div>
+          <div class="card"><div class="ch"><h2>변경 후 일정</h2></div><div class="cb">
+            <div class="gantt-rail" id="ganttB"></div></div></div>
+        </div>
+        <div class="legend" id="legendDiff" style="margin:-6px 0 14px"></div>
+      </div>
+    </section>
+
+    <!-- ⑤ 분석 -->
+    <section id="p-agent" role="tabpanel" aria-labelledby="t-agent" hidden>
+      <div class="card"><div class="ch"><h2>분석 대화</h2>
+        <p>일정 계산은 전부 스케줄러가 합니다. AI 는 도구를 호출하고 그 결과를 해석·설명만 합니다.</p></div><div class="cb">
+        <div class="statusline" id="agentMode"></div>
+        <div class="chat" id="chatLog"></div>
+      </div></div>
+      <div class="card"><div class="ch"><h2>자연어 상황 입력</h2>
+        <p>상황을 문장으로 입력하면 조건을 해석해 일정을 재계산하고 영향을 분석합니다.</p></div><div class="cb">
+        <div class="sub">입력 예시</div>
+        <div class="chips" id="exChips"></div>
+        <div class="field">
+          <label for="nlIn">상황 입력 <span class="hint" style="font-weight:400">Ctrl + Enter 로 보내기</span></label>
+          <textarea id="nlIn" placeholder="예: 3호기가 12시부터 15시간 멈췄어. 일정 다시 잡고 어떤 주문이 위험한지 알려줘."></textarea>
+        </div>
+        <div class="btnrow" style="justify-content:flex-end">
+          <button class="btn ghost" type="button" id="nlClear">대화 초기화</button>
+          <button class="btn" type="button" id="nlRun">해석하고 재편성</button>
+        </div>
+      </div></div>
+    </section>
+
+    <footer>
+      공정 데이터 출처: OR-Library <span class="mono">jobshop1.txt</span> (82 instances), J.E. Beasley, Brunel University London.
+      ft06 원전: H. Fisher &amp; G.L. Thompson (1963), <i>Industrial Scheduling</i>, Prentice Hall, 225–251.
+      납기·우선순위·긴급주문·설비고장 정보는 원본에 포함되지 않아 본 시연에서 별도로 설정한 값입니다.
+      화면 설계는 KRDS(대한민국 정부 디자인 시스템) 공개 토큰과 사내 업무시스템 공통 관례를 참고했으며, 특정 기업의 브랜드 요소는 사용하지 않았습니다.
+    </footer>
+  </main>
+</div>
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<dialog id="apiDlg" aria-labelledby="apiDlgTitle">
+  <div class="dh"><h2 id="apiDlgTitle">API 설정</h2></div>
+  <div class="db">
+    <dl class="kv" id="srvInfo"></dl>
+    <div class="field" id="keyField">
+      <label for="keyIn">Claude API 키</label>
+      <input type="password" id="keyIn" autocomplete="off" spellcheck="false" placeholder="sk-ant-...">
+      <span class="hint">이 탭의 메모리에만 두고 저장하지 않습니다. 새로고침하면 지워집니다. 서버에 키가 설정돼 있으면 비워 두세요.</span>
+    </div>
+    <div class="field">
+      <label for="modelSel">모델</label>
+      <select id="modelSel"></select>
+    </div>
+    <div class="field" id="passField" hidden>
+      <label for="passIn">접속 코드</label>
+      <input type="password" id="passIn" autocomplete="off" spellcheck="false">
+      <span class="hint">서버에 저장된 API 키를 쓰려면 배포할 때 정한 접속 코드가 필요합니다.</span>
+    </div>
+  </div>
+  <div class="df">
+    <button class="btn ghost" type="button" id="reconnBtn">서버 다시 연결</button>
+    <button class="btn" type="button" id="apiClose">확인</button>
+  </div>
+</dialog>
+
+<script>
+const INSTANCES = {
+  ft06:{n:"ft06",nj:6,nm:6,opt:55,lb:55,ub:55,ref:"J.F. Muth, G.L. Thompson. 'Industrial scheduling.', Englewood Cliffs, NJ, Prentice-Hall, 1963.",jobs:[[[2,1],[0,3],[1,6],[3,7],[5,3],[4,6]],[[1,8],[2,5],[4,10],[5,10],[0,10],[3,4]],[[2,5],[3,4],[5,8],[0,9],[1,1],[4,7]],[[1,5],[0,5],[2,5],[3,3],[4,8],[5,9]],[[2,9],[1,3],[4,5],[5,4],[0,3],[3,1]],[[1,3],[3,3],[5,9],[0,10],[4,4],[2,1]]]},
+  ft10:{n:"ft10",nj:10,nm:10,opt:930,lb:930,ub:930,ref:"J.F. Muth, G.L. Thompson. 'Industrial scheduling.', Englewood Cliffs, NJ, Prentice-Hall, 1963.",jobs:[[[0,29],[1,78],[2,9],[3,36],[4,49],[5,11],[6,62],[7,56],[8,44],[9,21]],[[0,43],[2,90],[4,75],[9,11],[3,69],[1,28],[6,46],[5,46],[7,72],[8,30]],[[1,91],[0,85],[3,39],[2,74],[8,90],[5,10],[7,12],[6,89],[9,45],[4,33]],[[1,81],[2,95],[0,71],[4,99],[6,9],[8,52],[7,85],[3,98],[9,22],[5,43]],[[2,14],[0,6],[1,22],[5,61],[3,26],[4,69],[8,21],[7,49],[9,72],[6,53]],[[2,84],[1,2],[5,52],[3,95],[8,48],[9,72],[0,47],[6,65],[4,6],[7,25]],[[1,46],[0,37],[3,61],[2,13],[6,32],[5,21],[9,32],[8,89],[7,30],[4,55]],[[2,31],[0,86],[1,46],[5,74],[4,32],[6,88],[8,19],[9,48],[7,36],[3,79]],[[0,76],[1,69],[3,76],[5,51],[2,85],[9,11],[6,40],[7,89],[4,26],[8,74]],[[1,85],[0,13],[2,61],[6,7],[8,64],[9,76],[5,47],[3,52],[4,90],[7,45]]]},
+  la01:{n:"la01",nj:10,nm:5,opt:666,lb:666,ub:666,ref:"S. Lawrence. 'Resource constrained project scheduling: an experimental investigation of heuristic scheduling techniques (Supplement).', Graduate School of Industrial Administration. Pittsburgh, Pennsylvania, Carnegie-Mellon University, 1984.",jobs:[[[1,21],[0,53],[4,95],[3,55],[2,34]],[[0,21],[3,52],[4,16],[2,26],[1,71]],[[3,39],[4,98],[1,42],[2,31],[0,12]],[[1,77],[0,55],[4,79],[2,66],[3,77]],[[0,83],[3,34],[2,64],[1,19],[4,37]],[[1,54],[2,43],[4,79],[0,92],[3,62]],[[3,69],[4,77],[1,87],[2,87],[0,93]],[[2,38],[0,60],[1,41],[3,24],[4,83]],[[3,17],[1,49],[4,25],[0,44],[2,98]],[[4,77],[3,79],[2,43],[1,75],[0,96]]]},
+  la02:{n:"la02",nj:10,nm:5,opt:655,lb:655,ub:655,ref:"S. Lawrence. 'Resource constrained project scheduling: an experimental investigation of heuristic scheduling techniques (Supplement).', Graduate School of Industrial Administration. Pittsburgh, Pennsylvania, Carnegie-Mellon University, 1984.",jobs:[[[0,20],[3,87],[1,31],[4,76],[2,17]],[[4,25],[2,32],[0,24],[1,18],[3,81]],[[1,72],[2,23],[4,28],[0,58],[3,99]],[[2,86],[1,76],[4,97],[0,45],[3,90]],[[4,27],[0,42],[3,48],[2,17],[1,46]],[[1,67],[0,98],[4,48],[3,27],[2,62]],[[4,28],[1,12],[3,19],[0,80],[2,50]],[[1,63],[0,94],[2,98],[3,50],[4,80]],[[4,14],[0,75],[2,50],[1,41],[3,55]],[[4,72],[2,18],[1,37],[3,79],[0,61]]]},
+  abz5:{n:"abz5",nj:10,nm:10,opt:1234,lb:1234,ub:1234,ref:"J. Adams, E. Balas, D. Zawack. 'The shifting bottleneck procedure for job shop scheduling.', Management Science, Vol. 34, Issue 3, pp. 391-401, 1988.",jobs:[[[4,88],[8,68],[6,94],[5,99],[1,67],[2,89],[9,77],[7,99],[0,86],[3,92]],[[5,72],[3,50],[6,69],[4,75],[2,94],[8,66],[0,92],[1,82],[7,94],[9,63]],[[9,83],[8,61],[0,83],[1,65],[6,64],[5,85],[7,78],[4,85],[2,55],[3,77]],[[7,94],[2,68],[1,61],[4,99],[3,54],[6,75],[5,66],[0,76],[9,63],[8,67]],[[3,69],[4,88],[9,82],[8,95],[0,99],[2,67],[6,95],[5,68],[7,67],[1,86]],[[1,99],[4,81],[5,64],[6,66],[8,80],[2,80],[7,69],[9,62],[3,79],[0,88]],[[7,50],[1,86],[4,97],[3,96],[0,95],[8,97],[2,66],[5,99],[6,52],[9,71]],[[4,98],[6,73],[3,82],[2,51],[1,71],[5,94],[7,85],[0,62],[8,95],[9,79]],[[0,94],[6,71],[3,81],[7,85],[1,66],[2,90],[4,76],[5,58],[8,93],[9,97]],[[3,50],[0,59],[1,82],[8,67],[7,56],[9,96],[6,58],[4,81],[5,59],[2,96]]]}
+};
+
+for(const k in INSTANCES) INSTANCES[k].builtin=true;
+let CATALOG=Object.keys(INSTANCES).map(k=>{const I=INSTANCES[k]; return {key:k,n:I.n,nj:I.nj,nm:I.nm,opt:I.opt};});
+
+/* ══════════ 서버 연결 ══════════
+   화면은 이 HTML 을 내려준 서버(server.py)의 /api 를 부른다.
+   서버에 닿지 않으면(파일로 직접 열었거나 연결이 끊김) 브라우저 안의 휴리스틱으로 계속 동작한다. */
+const QS=new URLSearchParams(location.search);
+const API_BASE=(QS.get("api")||"").replace(/\/+$/,"");
+const SRV={state:"connecting",cpsat:false,serverKey:false,passcodeRequired:false,catalog:false,
+  models:["claude-sonnet-5-5","claude-opus-5-5","claude-haiku-5-5"],model:"claude-sonnet-5-5",modelTouched:false,
+  apiKey:"",passcode:""};
+
+async function api(path,body,{timeout=90000}={}){
+  const ctl=new AbortController(), timer=setTimeout(()=>ctl.abort(),timeout);
+  let r;
+  try{
+    r=await fetch(API_BASE+path, body===undefined ? {signal:ctl.signal}
+      : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ctl.signal});
+  }catch(e){
+    const ne=new Error(e.name==="AbortError"?"서버 응답 시간이 초과됐습니다.":"서버에 연결하지 못했습니다.");
+    ne.network=true; throw ne;
+  }finally{ clearTimeout(timer); }
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(!r.ok || !j){
+    const e=new Error((j&&j.error)||`서버 오류 (HTTP ${r.status})`);
+    e.status=r.status; e.data=j;
+    if(!j && (r.status===404||r.status>=500)) e.network=true;   // API 가 없는 정적 호스팅 등
+    throw e;
+  }
+  return j;
+}
+
+/* ══════════ 스케줄링 엔진 (브라우저용 · 서버 미연결 시 대체) ══════════ */
+const RULES={
+  MINSLACK:{label:"MINSLACK (최소 여유 우선)",f:(o,c)=>o.job.due-c.now-o.workRemaining},
+  EDD:{label:"EDD (최단 납기 우선)",f:(o,c)=>o.job.due},
+  CR:{label:"CR (임계비 우선)",f:(o,c)=>(o.job.due-c.now)/Math.max(1,o.workRemaining)},
+  SPT:{label:"SPT (최단 작업 우선)",f:(o,c)=>o.dur},
+  MWKR:{label:"MWKR (최다 잔여작업 우선)",f:(o,c)=>-o.workRemaining},
+  FIFO:{label:"FIFO (투입 순서)",f:(o,c)=>o.job.release*1000+o.idx}
+};
+function rngFrom(seed){
+  let a=seed>>>0;
+  return ()=>{ a=(a+0x6D2B79F5)>>>0; let t=a; t=Math.imul(t^(t>>>15),t|1);
+    t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; };
+}
+function buildOrders(inst,k){
+  return inst.jobs.map((ops,j)=>{
+    const twk=ops.reduce((s,o)=>s+o[1],0);
+    return {id:"J"+(j+1),name:"주문 "+String(j+1).padStart(3,"0"),release:0,twk,
+      due:Math.ceil(twk*k),priority:2,urgent:false,
+      ops:ops.map(([m,d],i)=>({machine:m,dur:d,idx:i}))};
+  });
+}
+function earliestFeasible(t,dur,win){
+  let s=t,g=0;
+  while(g++<400){ let moved=false;
+    for(const w of win){ if(s<w.end && s+dur>w.start){ s=w.end; moved=true; } }
+    if(!moved) return s; }
+  return s;
+}
+function schedule(orders,numMachines,rule,opts){
+  opts=opts||{};
+  const breakdowns=opts.breakdowns||[], frozen=opts.frozen||[], now=opts.now||0;
+  const prio=(RULES[rule]||RULES.MINSLACK).f;
+  const winByM={}; for(let m=0;m<numMachines;m++) winByM[m]=[];
+  for(const b of breakdowns) if(winByM[b.machine]) winByM[b.machine].push({start:b.start,end:b.end});
+  const machineReady=new Array(numMachines).fill(0), jobReady={}, nextIdx={}, placed=[];
+  for(const o of orders){ jobReady[o.id]=o.release; nextIdx[o.id]=0; }
+  for(const f of frozen){
+    placed.push(Object.assign({},f,{frozen:true}));
+    machineReady[f.machine]=Math.max(machineReady[f.machine],f.end);
+    jobReady[f.jobId]=Math.max(jobReady[f.jobId]||0,f.end);
+    nextIdx[f.jobId]=Math.max(nextIdx[f.jobId]||0,f.opIdx+1);
+  }
+  if(frozen.length||now>0) for(let m=0;m<numMachines;m++) machineReady[m]=Math.max(machineReady[m],now);
+  const totalOps=orders.reduce((s,o)=>s+o.ops.length,0);
+  let guard=0;
+  while(placed.length<totalOps && guard++<100000){
+    const cand=[];
+    for(const o of orders){
+      const i=nextIdx[o.id]; if(i>=o.ops.length) continue;
+      const op=o.ops[i];
+      const est0=Math.max(jobReady[o.id],machineReady[op.machine],o.release);
+      const est=earliestFeasible(est0,op.dur,winByM[op.machine]);
+      let wr=0; for(let z=i;z<o.ops.length;z++) wr+=o.ops[z].dur;
+      cand.push({job:o,jobId:o.id,opIdx:i,machine:op.machine,dur:op.dur,est,ect:est+op.dur,workRemaining:wr,idx:i});
+    }
+    if(!cand.length) break;
+    let minEct=Infinity,pivot=null;
+    for(const c of cand) if(c.ect<minEct){ minEct=c.ect; pivot=c; }
+    const conflict=cand.filter(c=>c.machine===pivot.machine && c.est<minEct);
+    const pool=conflict.length?conflict:[pivot];
+    const ctx={now:minEct};
+    pool.sort((a,b)=>{
+      const pa=a.job.urgent?-1:0, pb=b.job.urgent?-1:0; if(pa!==pb) return pa-pb;
+      if(a.job.priority!==b.job.priority) return a.job.priority-b.job.priority;
+      const d=prio(a,ctx)-prio(b,ctx); if(d!==0) return d;
+      return a.jobId.localeCompare(b.jobId);
+    });
+    let pick=pool[0];
+    if(opts.randomize && pool.length>1 && opts.rng()>0.65) pick=pool[1+Math.floor(opts.rng()*(pool.length-1))];
+    placed.push({jobId:pick.jobId,opIdx:pick.opIdx,machine:pick.machine,start:pick.est,end:pick.est+pick.dur,dur:pick.dur,frozen:false});
+    machineReady[pick.machine]=pick.est+pick.dur;
+    jobReady[pick.jobId]=pick.est+pick.dur;
+    nextIdx[pick.jobId]=pick.opIdx+1;
+  }
+  return summarize(orders,numMachines,placed,breakdowns,rule);
+}
+function summarize(orders,numMachines,placed,breakdowns,rule){
+  const makespan=placed.reduce((m,p)=>Math.max(m,p.end),0);
+  const jobStats=orders.filter(o=>placed.some(p=>p.jobId===o.id)).map(o=>{
+    const ops=placed.filter(p=>p.jobId===o.id).sort((a,b)=>a.opIdx-b.opIdx);
+    const completion=ops.reduce((m,p)=>Math.max(m,p.end),0);
+    const waitBy={}; let prevEnd=o.release;
+    for(const p of ops){ const w=Math.max(0,p.start-prevEnd); if(w>0) waitBy[p.machine]=(waitBy[p.machine]||0)+w; prevEnd=p.end; }
+    const tw=Object.entries(waitBy).sort((a,b)=>b[1]-a[1])[0];
+    const tardiness=Math.max(0,completion-o.due);
+    return {id:o.id,name:o.name,due:o.due,priority:o.priority,urgent:o.urgent,twk:o.twk,release:o.release,
+      completion,lateness:completion-o.due,tardiness,onTime:tardiness===0,
+      waiting:Math.max(0,completion-o.release-o.twk),waitBy,
+      bnM:tw?+tw[0]:null,bnW:tw?tw[1]:0};
+  });
+  const machineStats=[];
+  for(let m=0;m<numMachines;m++){
+    const ops=placed.filter(p=>p.machine===m);
+    const busy=ops.reduce((s,p)=>s+p.dur,0);
+    const down=breakdowns.filter(b=>b.machine===m).reduce((s,b)=>s+Math.max(0,Math.min(b.end,makespan)-b.start),0);
+    machineStats.push({machine:m,busy,down,idle:Math.max(0,makespan-busy-down),
+      util:makespan?busy/makespan:0,numOps:ops.length});
+  }
+  const jt=jobStats.filter(j=>j.onTime).length;
+  return {rule,makespan,placed,breakdowns,jobStats,machineStats,
+    totalTardiness:jobStats.reduce((s,j)=>s+j.tardiness,0),
+    maxTardiness:jobStats.reduce((m,j)=>Math.max(m,j.tardiness),0),
+    numTardy:jobStats.length-jt, onTimeRate:jobStats.length?jt/jobStats.length:0,
+    avgUtil:machineStats.reduce((s,x)=>s+x.util,0)/Math.max(1,numMachines)};
+}
+const scoreOf=(s,obj)=>obj==="makespan"? s.makespan*10000+s.totalTardiness
+                                       : s.totalTardiness*10000+s.maxTardiness*100+s.makespan;
+function solve(orders,numMachines,rule,opts,mode,obj,iters){
+  const base=schedule(orders,numMachines,rule,opts);
+  if(mode==="rule") return Object.assign({},base,{mode,iters:1});
+  let best=base,bs=scoreOf(base,obj);
+  const o2=Object.assign({},opts,{randomize:true,rng:rngFrom(20251025)});
+  const until=performance.now()+3000;   // 브라우저가 멈추지 않도록 3초 상한
+  for(let i=0;i<iters;i++){ if(performance.now()>until) break;
+    const s=schedule(orders,numMachines,rule,o2); const sc=scoreOf(s,obj);
+    if(sc<bs){ best=s; bs=sc; } }
+  return Object.assign({},best,{mode,iters});
+}
+function clipBreakdowns(bds,frozen){
+  // 이미 착수한(고정) 공정과 겹치는 고장은 그 공정이 끝난 뒤로 민다 — 설비는 돌던 작업을 마치고 정지한다.
+  const out=[],notes=[];
+  for(const b of bds){
+    let s=b.start; const e=b.end;
+    for(const f of frozen) if(f.machine===b.machine && f.start<e && s<f.end && f.end>s) s=f.end;
+    if(s>=e){ notes.push(`M${b.machine} ${b.start}~${b.end} 고장 구간은 이미 착수한 작업에 모두 가려져 무시했습니다.`); continue; }
+    if(s!==b.start) notes.push(`M${b.machine} 고장 시작을 ${b.start} → ${s} 로 조정했습니다 (착수 중이던 작업 완료 후 정지).`);
+    out.push({machine:b.machine,start:s,end:e});
+  }
+  return {out,notes};
+}
+
+/* ══════════ 입력 검증 (scheduler.py 와 같은 규칙) ══════════ */
+class InputError extends Error{}
+function intOf(v,label){
+  const x=Number(v);
+  if(v===""||!Number.isFinite(x)||!Number.isInteger(x)) throw new InputError(`${label}에 정수를 입력하세요.`);
+  return x;
+}
+function validateBreakdown(b,nm,orders){
+  if(!(b.machine>=0&&b.machine<nm)) throw new InputError(`설비 번호는 0~${nm-1} 사이여야 합니다 (입력 M${b.machine}).`);
+  if(b.start<0) throw new InputError("고장 시작 시각은 0 이상이어야 합니다.");
+  if(b.end<=b.start) throw new InputError(`고장 종료(${b.end})가 시작(${b.start})보다 뒤여야 합니다.`);
+  const warns=[], total=orders.reduce((s,o)=>s+o.twk,0);
+  if(b.end-b.start>total) warns.push(`중단 시간 ${b.end-b.start}이 전체 작업량 ${total}보다 깁니다. 일정 전체가 고장 종료 시점 뒤로 밀려 비교가 무의미해집니다.`);
+  const only=orders.filter(o=>o.ops.every(op=>op.machine===b.machine)).map(o=>o.id);
+  if(only.length) warns.push(`${only.join(", ")}는 M${b.machine}만 사용해 전량 대기합니다.`);
+  return warns;
+}
+function validateUrgent(release,due,ops,nm){
+  if(!ops.length) throw new InputError("공정이 최소 1개는 있어야 합니다.");
+  for(const op of ops){
+    if(!(op.machine>=0&&op.machine<nm)) throw new InputError(`설비 번호는 0~${nm-1} 사이여야 합니다 (입력 M${op.machine}).`);
+    if(op.dur<=0) throw new InputError(`처리시간은 1 이상이어야 합니다 (입력 ${op.dur}).`);
+  }
+  if(release<0) throw new InputError("투입 시각은 0 이상이어야 합니다.");
+  if(due<=release) throw new InputError(`납기(${due})가 투입 시각(${release})보다 뒤여야 합니다.`);
+  const twk=ops.reduce((s,o)=>s+o.dur,0), warns=[];
+  if(due-release<twk) warns.push(`납기까지 ${due-release}시간인데 순수 가공만 ${twk}시간이라 대기 없이 전용 라인을 써도 납기를 지킬 수 없습니다.`);
+  return warns;
+}
+
+/* ══════════ 상태 ══════════ */
+const S={
+  instKey:"ft06", k:1.3, rule:"MINSLACK", solver:"cpsat", obj:"tardiness", timeLimit:10, restarts:1500,
+  orders:null, base:null, re:null, breakdowns:[], notes:[], now:10,
+  gv:"machine", gv2:"machine", uoSeq:0, chat:[], calcAt:null
+};
+const SERIES=["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"];
+const YELLOWISH=new Set(["--s4"]);
+const jobColor=i=>`var(${SERIES[i%SERIES.length]})`;
+const jobInk=i=>YELLOWISH.has(SERIES[i%SERIES.length])?"var(--on-fill-dark)":"var(--on-fill)";
+const jobIdx=id=>Math.max(0,(S.orders||[]).findIndex(o=>o.id===id));
+const inst=()=>INSTANCES[S.instKey];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct=v=>(v*100).toFixed(0)+"%";
+const sign=d=>(d>0?"+":"")+d;
+const SOLVER_LABEL={cpsat:"CP-SAT",heuristic:"휴리스틱",rule:"규칙 단독",browser:"브라우저 휴리스틱"};
+const STATUS={OPTIMAL:["ok","최적해 증명됨"],FEASIBLE:["hold","제한시간 내 최선해"],HEURISTIC:["urg","휴리스틱 해"],
+  RULE:["urg","규칙 단독 배정"],BROWSER:["bad","브라우저 계산 (서버 미연결)"]};
+
+/* ══════════ 알림 ══════════ */
+function alertHTML(kind,text,dismiss){
+  const icon={err:"⚠",warn:"!",ok:"✓",info:"i"}[kind]||"i";
+  return `<div class="alert ${kind}"><b>${icon}</b><span>${text}</span>${dismiss?'<button class="x" type="button" aria-label="닫기">×</button>':""}</div>`;
+}
+function showAlert(kind,text){
+  const box=$("alerts");
+  for(const el of box.children) if(el.dataset.t===text) return;
+  const wrap=document.createElement("div"); wrap.innerHTML=alertHTML(kind,esc(text),true);
+  const el=wrap.firstChild; el.dataset.t=text; box.appendChild(el);
+  el.querySelector(".x").addEventListener("click",()=>el.remove());
+  if(kind!=="err") setTimeout(()=>el.remove(),9000);
+}
+function setMsgs(id,items){ $(id).innerHTML=items.map(it=>alertHTML(it[0],esc(it[1]),false)).join(""); }
+
+/* ══════════ 계산 (서버 우선, 실패 시 브라우저) ══════════ */
+const orderPayload=o=>({id:o.id,name:o.name,release:o.release,due:o.due,priority:o.priority,urgent:o.urgent,added:!!o.added,
+  ops:o.ops.map(op=>({machine:op.machine,dur:op.dur}))});
+const metaOf=s=>s?{status:s.status,solveSeconds:s.solveSeconds,solver:s.solver,breakdowns:s.breakdowns}:null;
+function effectiveSolver(){ return (S.solver==="cpsat" && !SRV.cpsat) ? "heuristic" : S.solver; }
+
+function localCompute(re){
+  const t0=performance.now(), mode=S.solver==="rule"?"rule":"optimize";
+  const totalOps=S.orders.reduce((s,o)=>s+o.ops.length,0);
+  const iters=Math.max(60,Math.min(S.restarts,Math.floor(400000/Math.max(1,totalOps*S.orders.length))));
+  let opts={}, notes=[];
+  if(re){
+    const live=new Set(S.orders.map(o=>o.id));
+    const frozen=S.base.placed.filter(p=>p.start<S.now && live.has(p.jobId)).map(p=>Object.assign({},p));
+    const clip=clipBreakdowns(S.breakdowns,frozen);
+    notes=[`기준시각 t=${S.now} 이전에 착수한 ${frozen.length}개 공정을 고정하고 나머지 ${totalOps-frozen.length}개를 재배정했습니다.`,...clip.notes];
+    opts={breakdowns:clip.out,frozen,now:S.now};
+  }
+  const s=solve(S.orders,inst().nm,S.rule,opts,mode,S.obj,iters);
+  Object.assign(s,{status:mode==="rule"?"RULE":"BROWSER",solver:mode==="rule"?"rule":"browser",
+    objective:S.obj,solveSeconds:(performance.now()-t0)/1000,source:"browser",now:re?S.now:0});
+  return {sched:s,notes};
+}
+async function computeSchedule(re){
+  if(SRV.state==="ok"){
+    const body={orders:S.orders.map(orderPayload),numMachines:inst().nm,solver:effectiveSolver(),objective:S.obj,
+      rule:S.rule,timeLimit:S.timeLimit,restarts:S.restarts};
+    if(re) Object.assign(body,{now:S.now,breakdowns:S.breakdowns,baseOps:S.base.placed,baseMeta:metaOf(S.base)});
+    try{
+      const r=await api("/api/solve",body,{timeout:(S.timeLimit+75)*1000});
+      r.schedule.source="server";
+      return {sched:r.schedule,notes:r.notes||[]};
+    }catch(e){
+      if(!e.network) throw e;
+      goOffline("서버 연결이 끊겨 브라우저 계산으로 전환했습니다.");
+    }
+  }
+  return localCompute(re);
+}
+function goOffline(msg){ if(SRV.state!=="off"){ SRV.state="off"; renderSrv(); if(msg) showAlert("warn",msg); } }
+
+let chain=Promise.resolve(), pending=0;
+function enqueue(task){
+  pending++; renderBusy();
+  const p=chain.then(task).catch(e=>showAlert("err",(e&&e.message)||String(e)))
+    .finally(()=>{ pending--; renderBusy(); renderAll(); });
+  chain=p; return p;
+}
+async function taskBase(){
+  let r;
+  try{ r=await computeSchedule(false); }
+  catch(e){ showAlert("err",`${e.message} — 브라우저 계산 결과를 대신 표시합니다.`); r=localCompute(false); }
+  S.base=r.sched; S.re=null; S.notes=[]; S.calcAt=new Date();
+}
+async function taskRe(){
+  const r=await computeSchedule(true);
+  S.re=r.sched; S.notes=r.notes; S.calcAt=new Date();
+}
+function recalc(keepRe){ const hadRe=keepRe && !!S.re; enqueue(taskBase); if(hadRe) enqueue(taskRe); }
+async function fixOrphans(){
+  // 주문이 빠졌는데 기준 일정에 그 공정이 남아 있으면 기준 일정을 다시 세운다
+  const live=new Set(S.orders.map(o=>o.id));
+  if(S.base && S.base.placed.some(p=>!live.has(p.jobId))) await taskBase();
+}
+
+/* ══════════ 간트 ══════════ */
+function renderGantt(el,sched,view,opts){
+  opts=opts||{};
+  const nm=inst().nm, orders=S.orders;
+  const rows = view==="machine"
+    ? Array.from({length:nm},(_,m)=>({key:m,label:"M"+m,ops:sched.placed.filter(p=>p.machine===m)}))
+    : orders.map((o,i)=>({key:o.id,label:o.id,job:o,ops:sched.placed.filter(p=>p.jobId===o.id)}));
+  const maxT=Math.max(sched.makespan, ...orders.map(o=>o.due), 1);
+  const padL=46, padR=30, padT=opts.compact?22:26, rowH=opts.compact?22:27, gap=opts.compact?5:7;
+  const px=Math.max(opts.compact?0.6:0.9, Math.min(16, (opts.compact?560:760)/maxT));
+  const W=padL+maxT*px+padR, H=padT+rows.length*(rowH+gap)+26;
+  const x=t=>padL+t*px;
+  const raw=maxT/8, mag=Math.pow(10,Math.floor(Math.log10(raw))), step=[1,2,5,10].map(v=>v*mag).find(v=>v>=raw)||mag*10;
+  let g="";
+  for(let t=0;t<=maxT;t+=step){
+    g+=`<line x1="${x(t).toFixed(1)}" y1="${padT-6}" x2="${x(t).toFixed(1)}" y2="${H-26}" stroke="var(--line)" stroke-width="1"/>`;
+    g+=`<text x="${x(t).toFixed(1)}" y="${padT-11}" fill="var(--ink-muted)" font-size="9.5" text-anchor="middle" font-family="var(--font-mono)">${t}</text>`;
+  }
+  if(opts.nowLine!=null && opts.nowLine>0){
+    g+=`<line x1="${x(opts.nowLine).toFixed(1)}" y1="${padT-6}" x2="${x(opts.nowLine).toFixed(1)}" y2="${H-26}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    g+=`<text x="${(x(opts.nowLine)+4).toFixed(1)}" y="${H-15}" fill="var(--ink)" font-size="9.5" font-family="var(--font-mono)">t=${opts.nowLine}</text>`;
+  }
+  rows.forEach((r,ri)=>{
+    const y=padT+ri*(rowH+gap);
+    g+=`<rect x="${padL}" y="${y}" width="${(maxT*px).toFixed(1)}" height="${rowH}" fill="var(--surface)" stroke="var(--line)" stroke-width="1" rx="4"/>`;
+    g+=`<text x="${padL-9}" y="${y+rowH/2+3.5}" fill="var(--ink-2)" font-size="11" font-weight="600" text-anchor="end" font-family="var(--font-mono)">${esc(r.label)}</text>`;
+    if(view==="machine") for(const b of (sched.breakdowns||[])){
+      if(b.machine!==r.key) continue;
+      g+=`<rect x="${x(b.start).toFixed(1)}" y="${y}" width="${Math.max(1,(b.end-b.start)*px).toFixed(1)}" height="${rowH}" fill="url(#hatch)" stroke="var(--crit)" stroke-width="1" stroke-dasharray="3 2" rx="4"/>`;
+    }
+    for(const p of r.ops){
+      const i=jobIdx(p.jobId), bw=Math.max(1,(p.dur*px)-2);
+      const lbl = view==="machine" ? p.jobId.replace(/^J/,"") : "M"+p.machine;
+      g+=`<g class="gb" data-j="${esc(p.jobId)}" data-m="${p.machine}" data-o="${p.opIdx}" data-s="${p.start}" data-e="${p.end}" data-f="${p.frozen?1:0}" tabindex="0" role="img" aria-label="${esc(p.jobId)} 공정${p.opIdx+1} 설비M${p.machine} ${p.start}~${p.end}">`;
+      g+=`<rect x="${(x(p.start)+1).toFixed(1)}" y="${y+3}" width="${bw.toFixed(1)}" height="${rowH-6}" rx="3" fill="${jobColor(i)}" stroke="var(--surface)" stroke-width="${bw>6?2:0.5}"/>`;
+      if(p.frozen) g+=`<rect x="${(x(p.start)+1).toFixed(1)}" y="${y+3}" width="${bw.toFixed(1)}" height="${rowH-6}" rx="3" fill="url(#lock)" stroke="var(--ink)" stroke-width="1.2" stroke-dasharray="2.5 2"/>`;
+      if(bw>=16) g+=`<text x="${(x(p.start)+1+bw/2).toFixed(1)}" y="${y+rowH/2+3.5}" fill="${jobInk(i)}" font-size="10" font-weight="600" text-anchor="middle" font-family="var(--font-mono)">${esc(lbl)}</text>`;
+      g+=`</g>`;
+    }
+    if(view==="job" && r.job){
+      const dx=x(r.job.due);
+      g+=`<path d="M${(dx-4.5).toFixed(1)} ${y-2} L${(dx+4.5).toFixed(1)} ${y-2} L${dx.toFixed(1)} ${y+4.5} Z" fill="${r.job.due<r.ops.reduce((m,p)=>Math.max(m,p.end),0)?"var(--crit)":"var(--good)"}"/>`;
+    }
+  });
+  const defs=`<defs>
+    <pattern id="hatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+      <rect width="7" height="7" fill="color-mix(in srgb, var(--crit) 28%, var(--surface))"/>
+      <line x1="0" y1="0" x2="0" y2="7" stroke="var(--crit)" stroke-width="2.6" opacity=".75"/></pattern>
+    <pattern id="lock" width="6" height="6" patternTransform="rotate(135)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="var(--surface)" stroke-width="2" opacity=".55"/></pattern>
+  </defs>`;
+  el.innerHTML=`<svg viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}" role="group" aria-label="생산일정 간트 차트">${defs}${g}</svg>`;
+  wireTips(el,sched);
+}
+function legendHTML(){
+  const list=S.orders.length>24 ? S.orders.slice(0,24) : S.orders;
+  return list.map((o,i)=>
+    `<span><i class="dot" style="background:${jobColor(i)}"></i>${esc(o.id)}${o.urgent?" 긴급":""} · 납기 <span class="mono">${o.due}</span></span>`
+  ).join("")
+  + (S.orders.length>24?`<span>외 ${S.orders.length-24}개 주문</span>`:"")
+  + `<span><i class="dot" style="background:repeating-linear-gradient(135deg,var(--ink) 0 2px,transparent 2px 4px)"></i>착수 완료(고정)</span>`
+  + `<span><i class="dot" style="background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px);box-shadow:0 0 0 1px var(--crit)"></i>설비 가동중단</span>`;
+}
+let tipEl;
+function wireTips(el,sched){
+  tipEl=tipEl||$("tip");
+  const show=(ev,g)=>{
+    const j=g.dataset.j, o=S.orders.find(x=>x.id===j), i=jobIdx(j);
+    const st=sched.jobStats.find(x=>x.id===j);
+    tipEl.innerHTML=`<b><i class="dot" style="background:${jobColor(i)}"></i>${esc(j)} · 공정 ${+g.dataset.o+1}</b>
+      <dl><dt>설비</dt><dd>M${g.dataset.m}</dd>
+      <dt>작업 구간</dt><dd>${g.dataset.s} → ${g.dataset.e}</dd>
+      <dt>처리시간</dt><dd>${g.dataset.e-g.dataset.s}</dd>
+      <dt>주문 납기</dt><dd>${o?o.due:"-"}</dd>
+      <dt>완료 예정</dt><dd>${st?st.completion:"-"}</dd>
+      <dt>납기 상태</dt><dd>${st?(st.onTime?"준수":"지연 "+st.tardiness):"-"}</dd>
+      ${g.dataset.f==="1"?"<dt>상태</dt><dd>착수 완료</dd>":""}</dl>`;
+    const r=g.getBoundingClientRect();
+    tipEl.dataset.on="1";
+    const tw=tipEl.offsetWidth||200;
+    tipEl.style.left=Math.min(window.innerWidth-tw-10,Math.max(8,r.left))+"px";
+    tipEl.style.top=(r.bottom+9>window.innerHeight-130? r.top-tipEl.offsetHeight-9 : r.bottom+9)+"px";
+  };
+  const hide=()=>{ if(tipEl) tipEl.dataset.on="0"; };
+  el.querySelectorAll(".gb").forEach(g=>{
+    g.addEventListener("mouseenter",e=>show(e,g));
+    g.addEventListener("focus",e=>show(e,g));
+    g.addEventListener("mouseleave",hide);
+    g.addEventListener("blur",hide);
+  });
+  el.addEventListener("scroll",hide,{passive:true});
+}
+
+/* ══════════ 렌더 ══════════ */
+function statusTags(s,withOpt){
+  if(!s) return "";
+  const st=STATUS[s.status]||["hold",s.status];
+  let h=`<span class="tag ${st[0]}">${st[1]}</span><span>${SOLVER_LABEL[s.solver]||esc(s.solver)} · 계산 ${(+s.solveSeconds||0).toFixed(2)}초 · ${s.source==="server"?"서버":"브라우저"}</span>`;
+  const I=inst();
+  if(withOpt && (s.objective||S.obj)==="makespan" && I.opt){
+    const d=s.makespan-I.opt;
+    h+= d===0 ? `<span class="tag ok">문헌 최적 ${I.opt} 대비 일치 ✅</span>`
+              : `<span class="tag hold">문헌 최적 ${I.opt} 대비 ${sign(d)}</span>`;
+  }
+  return h;
+}
+function calcChipHTML(){
+  if(pending>0) return `<span class="spin"></span> 계산 중…`;
+  const s=S.re||S.base; if(!s) return "";
+  const d=S.calcAt||new Date(), p=n=>String(n).padStart(2,"0");
+  return `산출 <b>${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}</b> · ${SOLVER_LABEL[s.solver]||esc(s.solver)} · ${s.source==="server"?"서버":"브라우저"}`;
+}
+function renderBusy(){
+  $("calcChip").innerHTML=calcChipHTML();
+  $("runRe").disabled=pending>0; $("nlRun").disabled=pending>0;
+}
+function renderKpis(){
+  const a=S.base, b=S.re;
+  const items=[
+    {k:"총 완료시간 (makespan)",v:(b||a).makespan,d:b?b.makespan-a.makespan:null,inv:false,
+     sub:inst().opt?`문헌 최적 ${inst().opt}`:""},
+    {k:"납기 준수율",v:pct((b||a).onTimeRate),d:b?Math.round((b.onTimeRate-a.onTimeRate)*100):null,inv:true,unit:"%p",
+     sub:`${(b||a).jobStats.length-(b||a).numTardy} / ${(b||a).jobStats.length} 주문`},
+    {k:"총 납기지연",v:(b||a).totalTardiness,d:b?b.totalTardiness-a.totalTardiness:null,inv:false,
+     sub:`최대 지연 ${(b||a).maxTardiness}`},
+    {k:"평균 설비 가동률",v:pct((b||a).avgUtil),d:b?Math.round((b.avgUtil-a.avgUtil)*100):null,inv:true,unit:"%p",
+     sub:`설비 ${inst().nm}대`}
+  ];
+  renderBusy();
+  $("kpis").innerHTML=items.map(it=>{
+    let dh="";
+    if(it.d!==null && it.d!==undefined){
+      const good=it.inv? it.d>0 : it.d<0;
+      const cls=it.d===0?"flat":(good?"down":"up");
+      dh=`<span class="delta ${cls}">${it.d>0?"▲ +":it.d<0?"▼ ":"– "}${it.d===0?"0":Math.abs(it.d)}${it.unit||""}</span>`;
+    }
+    return `<div class="kpi"><div class="k">${esc(it.k)}</div><div class="v">${it.v}</div>
+      <div class="d">${dh}<span>${esc(it.sub||"")}</span></div></div>`;
+  }).join("");
+}
+function renderData(){
+  const I=inst();
+  $("dsChip").innerHTML=`OR-Library <b>${esc(I.n)}</b> · ${I.nj} job × ${I.nm} machine`;
+  $("instRef").textContent=(I.ref||I.description||"")+(I.opt?` · 문헌 최적 makespan ${I.opt}`:"");
+  if($("instSel").value!==S.instKey) $("instSel").value=S.instKey;
+  $("orderTbl").innerHTML=
+    `<thead><tr><th>주문</th><th>총가공시간</th><th>투입</th><th>납기</th><th>우선순위</th></tr></thead><tbody>`+
+    S.orders.map((o,i)=>`<tr>
+      <td><i class="dot" style="background:${jobColor(i)}"></i>${esc(o.id)}${o.urgent?' <span class="tag urg">긴급</span>':""}</td>
+      <td class="n">${o.twk}</td>
+      <td class="n"><input type="number" data-f="release" data-i="${i}" value="${o.release}" min="0" style="width:72px" aria-label="${esc(o.id)} 투입"></td>
+      <td class="n"><input type="number" data-f="due" data-i="${i}" value="${o.due}" min="1" style="width:78px" aria-label="${esc(o.id)} 납기"></td>
+      <td class="n"><select data-f="priority" data-i="${i}" style="width:84px" aria-label="${esc(o.id)} 우선순위">
+        ${[1,2,3].map(p=>`<option value="${p}"${o.priority===p?" selected":""}>${p}</option>`).join("")}</select></td>
+    </tr>`).join("")+`</tbody>`;
+  $("orderTbl").querySelectorAll("input,select").forEach(el=>{
+    el.addEventListener("change",()=>{
+      const o=S.orders[+el.dataset.i], v=Math.round(+el.value);
+      if(!Number.isFinite(v)){ el.value=o[el.dataset.f]; return; }
+      if(el.dataset.f==="priority") o.priority=v;
+      else if(el.dataset.f==="due"){ if(v<=o.release){ showAlert("err",`납기(${v})가 투입 시각(${o.release})보다 뒤여야 합니다.`); el.value=o.due; return; } o.due=v; }
+      else { if(v<0||v>=o.due){ showAlert("err",`투입 시각은 0 이상, 납기(${o.due})보다 앞이어야 합니다.`); el.value=o.release; return; } o.release=v; }
+      o.urgent = o.priority===1;
+      enqueue(taskBase);
+    });
+  });
+  const maxOps=Math.max(...S.orders.map(o=>o.ops.length));
+  $("routeTbl").innerHTML=
+    `<thead><tr><th>주문</th>${Array.from({length:maxOps},(_,i)=>`<th>공정 ${i+1}</th>`).join("")}</tr></thead><tbody>`+
+    S.orders.map((o,i)=>`<tr><td><i class="dot" style="background:${jobColor(i)}"></i>${esc(o.id)}</td>`+
+      Array.from({length:maxOps},(_,z)=>{
+        const op=o.ops[z];
+        return `<td class="n">${op?`M${op.machine} <span style="color:var(--ink-muted)">·</span> ${op.dur}`:"—"}</td>`;
+      }).join("")+`</tr>`).join("")+`</tbody>`;
+  // 설비 정보: 담당 공정 · 총 가공시간 · 가동 불가 시간
+  $("machInfoTbl").innerHTML=
+    `<thead><tr><th>설비</th><th>담당 공정 수</th><th>총 가공시간</th><th>가공 주문 (공정 순번)</th><th>가동 불가 시간</th></tr></thead><tbody>`+
+    Array.from({length:I.nm},(_,m)=>{
+      const uses=[]; let load=0;
+      for(const o of S.orders) for(const op of o.ops) if(op.machine===m){ uses.push(`${o.id}·${op.idx+1}`); load+=op.dur; }
+      const bds=S.breakdowns.filter(b=>b.machine===m);
+      const shown=uses.length>10?uses.slice(0,10).join(", ")+` 외 ${uses.length-10}건`:uses.join(", ");
+      return `<tr><td class="mono">M${m}</td><td class="n">${uses.length}</td><td class="n">${load}</td>
+        <td style="text-align:left;white-space:normal;min-width:180px">${esc(shown)}</td>
+        <td>${bds.length?bds.map(b=>`<span class="tag bad">${b.start} → ${b.end}</span>`).join(" "):'<span style="color:var(--ink-muted)">없음 (상시 가동)</span>'}</td></tr>`;
+    }).join("")+`</tbody>`;
+  // 엔진·목적 안내
+  const sh={cpsat:"OR-Tools CP-SAT 로 정확해를 구합니다. 소규모는 최적해를 증명합니다.",
+            heuristic:"Giffler-Thompson 능동일정 + 우선순위 규칙 + 다중시작 (최대 1,500회 · 5초).",
+            rule:"선택한 우선순위 규칙을 한 번만 적용합니다 (탐색 없음)."}[S.solver];
+  $("solHint").textContent = SRV.state==="connecting" ? "서버에 연결하는 중입니다. 그동안 브라우저 계산 결과를 표시합니다."
+    : SRV.state!=="ok" ? "서버에 연결되지 않아 브라우저에서 휴리스틱으로 계산합니다."
+    : (S.solver==="cpsat" && !SRV.cpsat) ? "이 서버에는 ortools 가 없어 CP-SAT 대신 휴리스틱으로 계산합니다." : sh;
+  $("objHint").textContent = S.obj==="makespan"
+    ? "모델 검증용 — ft06 은 문헌 최적 55 가 나와야 합니다."
+    : "우선순위 가중치(긴급 4 · 보통 2 · 여유 1)를 곱한 지연 합을 최소화합니다.";
+  ["solCp","solHe","solRu"].forEach((id,i)=>$(id).setAttribute("aria-pressed",["cpsat","heuristic","rule"][i]===S.solver?"true":"false"));
+  for(const id of ["objTard","objTard2"]) $(id).setAttribute("aria-pressed",S.obj==="tardiness"?"true":"false");
+  for(const id of ["objMk","objMk2"]) $(id).setAttribute("aria-pressed",S.obj==="makespan"?"true":"false");
+}
+function renderPlan(){
+  const a=S.base;
+  $("planMeta").textContent=`목적 ${S.obj==="tardiness"?"총 납기지연 최소 (우선순위 가중)":"총 완료시간 최소"}`
+    + (a.solver==="cpsat"?"":` · 규칙 ${RULES[S.rule].label}`);
+  $("planStatus").innerHTML=statusTags(a,true);
+  $("planRuleChip").innerHTML=`엔진 <b>${SOLVER_LABEL[a.solver]||esc(a.solver)}</b> · 목적 ${S.obj==="tardiness"?"납기지연":"완료시간"}`;
+  renderGantt($("ganttBase"),a,S.gv,{});
+  $("legendBase").innerHTML=legendHTML();
+  $("jobTbl").innerHTML=
+    `<thead><tr><th>주문</th><th>투입</th><th>총가공</th><th>완료 예정</th><th>납기</th><th>지연</th><th>대기</th><th>최다 대기 설비</th><th>상태</th></tr></thead><tbody>`+
+    a.jobStats.map(j=>`<tr>
+      <td><i class="dot" style="background:${jobColor(jobIdx(j.id))}"></i>${esc(j.id)}</td>
+      <td class="n">${j.release}</td><td class="n">${j.twk}</td>
+      <td class="n"><b>${j.completion}</b></td><td class="n">${j.due}</td>
+      <td class="n">${j.tardiness>0?`<span style="color:var(--crit);font-weight:600">+${j.tardiness}</span>`:"0"}</td>
+      <td class="n">${j.waiting}</td>
+      <td class="n">${j.bnM!==null&&j.bnW>0?`M${j.bnM} (${j.bnW})`:"—"}</td>
+      <td>${j.onTime?'<span class="tag ok">준수</span>':'<span class="tag bad">지연</span>'}</td></tr>`).join("")+`</tbody>`;
+  const mx=Math.max(1,...a.machineStats.map(m=>m.busy));
+  $("machTbl").innerHTML=
+    `<thead><tr><th>설비</th><th>작업 수</th><th>가동</th><th>유휴</th><th>중단</th><th>가동률</th></tr></thead><tbody>`+
+    a.machineStats.map(m=>`<tr>
+      <td class="mono">M${m.machine}</td><td class="n">${m.numOps}</td>
+      <td class="n">${m.busy}</td><td class="n">${m.idle}</td>
+      <td class="n">${m.down||0}</td>
+      <td><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+        <div class="bar-track" style="width:62px"><div class="bar-fill" style="width:${(m.busy/mx*100).toFixed(0)}%;background:var(--accent)"></div></div>
+        <span class="mono">${pct(m.util)}</span></div></td></tr>`).join("")+`</tbody>`;
+  $("opTbl").innerHTML=
+    `<thead><tr><th>주문</th><th>공정</th><th>설비</th><th>시작</th><th>종료</th><th>처리시간</th><th>고정</th></tr></thead><tbody>`+
+    a.placed.slice().sort((p,q)=>p.machine-q.machine||p.start-q.start).map(p=>`<tr>
+      <td><i class="dot" style="background:${jobColor(jobIdx(p.jobId))}"></i>${esc(p.jobId)}</td>
+      <td class="n">${p.opIdx+1}</td><td class="n">M${p.machine}</td><td class="n">${p.start}</td><td class="n">${p.end}</td>
+      <td class="n">${p.end-p.start}</td><td>${p.frozen?"고정":""}</td></tr>`).join("")+`</tbody>`;
+  const cmp=Object.keys(RULES).map(r=>{
+    const s=schedule(S.orders,inst().nm,r,{});
+    return {r,label:RULES[r].label,mk:s.makespan,tt:s.totalTardiness,nt:s.numTardy,ot:s.onTimeRate,au:s.avgUtil};
+  });
+  const bestTT=Math.min(...cmp.map(c=>c.tt)), bestMK=Math.min(...cmp.map(c=>c.mk));
+  $("ruleTbl").innerHTML=
+    `<thead><tr><th>규칙</th><th>총 완료시간</th><th>총 납기지연</th><th>지연 주문</th><th>납기 준수율</th><th>평균 가동률</th></tr></thead><tbody>`+
+    cmp.map(c=>`<tr${c.r===S.rule?' style="background:var(--accent-soft)"':""}>
+      <td>${esc(c.label)}${c.r===S.rule?' <span class="tag hold">선택</span>':""}</td>
+      <td class="n"${c.mk===bestMK?' style="color:var(--good-ink);font-weight:600"':""}>${c.mk}</td>
+      <td class="n"${c.tt===bestTT?' style="color:var(--good-ink);font-weight:600"':""}>${c.tt}</td>
+      <td class="n">${c.nt}</td><td class="n">${pct(c.ot)}</td><td class="n">${pct(c.au)}</td></tr>`).join("")
+    +`<tr style="background:var(--surface-2);font-weight:600"><td>현재 일정 (${esc(SOLVER_LABEL[a.solver]||a.solver)})</td>
+      <td class="n">${a.makespan}</td><td class="n">${a.totalTardiness}</td><td class="n">${a.numTardy}</td>
+      <td class="n">${pct(a.onTimeRate)}</td><td class="n">${pct(a.avgUtil)}</td></tr>`+`</tbody>`;
+}
+function renderEvent(){
+  const nm=inst().nm, keepM=$("bdM").value;
+  if($("bdM").options.length!==nm){
+    $("bdM").innerHTML=Array.from({length:nm},(_,m)=>`<option value="${m}">M${m}</option>`).join("");
+    $("bdM").value=(keepM!==""&&+keepM<nm)?keepM:String(Math.min(2,nm-1));
+  }
+  $("nowS").max=Math.max(10,S.base.makespan);
+  $("nowS").value=S.now;
+  $("nowVal").textContent=S.now;
+  updateFrozenHint();
+  const urg=S.orders.filter(o=>o.urgent);
+  $("evList").innerHTML = (S.breakdowns.length||urg.length)
+    ? S.breakdowns.map((b,i)=>`<div class="ev"><span class="tag bad">설비 고장</span>
+        <span class="mono">M${b.machine}</span>
+        <span style="color:var(--ink-2)">${b.start} → ${b.end} (${b.end-b.start} 시간 중단)</span>
+        <button class="x" type="button" data-bd="${i}" aria-label="삭제">×</button></div>`).join("")
+      + urg.map(o=>`<div class="ev"><span class="tag urg">긴급 주문</span>
+        <span class="mono">${esc(o.id)}</span>
+        <span style="color:var(--ink-2)">투입 ${o.release} · 납기 ${o.due} · 공정 ${o.ops.length}개 · 총가공 ${o.twk}${o.added?"":" (기존 주문을 긴급으로 지정)"}</span>
+        ${o.added?`<button class="x" type="button" data-uo="${esc(o.id)}" aria-label="삭제">×</button>`:""}</div>`).join("")
+    : `<div class="empty" style="padding:16px">등록된 돌발상황이 없습니다. 위에서 설비 고장이나 긴급 주문을 추가하세요.</div>`;
+  $("evList").querySelectorAll("[data-bd]").forEach(b=>b.addEventListener("click",()=>{
+    S.breakdowns.splice(+b.dataset.bd,1); S.re=null; S.notes=[]; renderAll();
+  }));
+  $("evList").querySelectorAll("[data-uo]").forEach(b=>b.addEventListener("click",()=>{
+    S.orders=S.orders.filter(o=>o.id!==b.dataset.uo); enqueue(taskBase);
+  }));
+  $("reCard").hidden=!S.re;
+  if(S.re){
+    const r=S.re,a=S.base;
+    $("reMeta").textContent=`기준시각 t=${r.now??S.now} · 재편성 후 총 완료시간 ${r.makespan} (${sign(r.makespan-a.makespan)}) · 총 납기지연 ${r.totalTardiness} (${sign(r.totalTardiness-a.totalTardiness)})`;
+    $("reStatus").innerHTML=statusTags(r,false);
+    $("reNotes").innerHTML=(S.notes||[]).map(n=>alertHTML("info",esc(n),false)).join("");
+    renderGantt($("ganttRe"),r,S.gv2,{nowLine:r.now??S.now});
+    $("legendRe").innerHTML=legendHTML();
+  }
+}
+function updateFrozenHint(){
+  const live=new Set(S.orders.map(o=>o.id));
+  const ops=S.base.placed.filter(p=>live.has(p.jobId));
+  const fz=ops.filter(p=>p.start<S.now).length;
+  const total=S.orders.reduce((s,o)=>s+o.ops.length,0);
+  $("frozenHint").textContent=`t=${S.now} 기준으로 착수 완료 ${fz}개 공정은 고정, 나머지 ${total-fz}개를 재배정합니다.`;
+}
+function renderTard(a,b){
+  const rows=b.jobStats.map(j=>{ const pa=a.jobStats.find(z=>z.id===j.id); return {id:j.id,before:pa?pa.tardiness:0,isNew:!pa,after:j.tardiness}; });
+  const maxV=Math.max(1,...rows.map(r=>Math.max(r.before,r.after)));
+  const raw=maxV/4, mag=Math.pow(10,Math.floor(Math.log10(raw)));
+  const step=Math.max(1,[1,2,5,10].map(v=>v*mag).find(v=>v>=raw)||mag*10);
+  const top=Math.ceil(maxV/step)*step;
+  const padL=40,padR=12,padT=18,padB=30,ch=170,gw=Math.max(30,Math.min(64,700/rows.length)),bw=Math.max(4,(gw-10)/2);
+  const W=padL+rows.length*gw+padR,H=padT+ch+padB, y=v=>padT+ch-(v/top)*ch;
+  let g="";
+  for(let v=0;v<=top;v+=step){
+    g+=`<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W-padR}" y2="${y(v).toFixed(1)}" stroke="var(--line)"/>`;
+    g+=`<text x="${padL-6}" y="${(y(v)+3.5).toFixed(1)}" fill="var(--ink-muted)" font-size="9.5" text-anchor="end" font-family="var(--font-mono)">${v}</text>`;
+  }
+  rows.forEach((r,i)=>{
+    const gx=padL+i*gw+5;
+    const bar=(x,v,fill,lab)=>{
+      const h=Math.max(v>0?1.5:0,(v/top)*ch);
+      g+=`<rect x="${x.toFixed(1)}" y="${(padT+ch-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${fill}"/>`;
+      if(bw>=9) g+=`<text x="${(x+bw/2).toFixed(1)}" y="${(padT+ch-h-4).toFixed(1)}" fill="${lab}" font-size="9" text-anchor="middle" font-family="var(--font-mono)">${v}</text>`;
+    };
+    bar(gx,r.before,"var(--rail)","var(--ink-muted)");
+    bar(gx+bw,r.after,"var(--crit)","var(--crit)");
+    g+=`<text x="${(gx+bw).toFixed(1)}" y="${H-12}" fill="var(--ink-2)" font-size="10" font-weight="600" text-anchor="middle" font-family="var(--font-mono)">${esc(r.id)}${r.isNew?"*":""}</text>`;
+  });
+  $("tardChart").innerHTML=`<svg viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}" role="img" aria-label="주문별 납기지연 변경 전후 막대그래프">${g}</svg>`;
+  const d=b.totalTardiness-a.totalTardiness;
+  $("tardMeta").textContent=`총 납기지연 ${a.totalTardiness} → ${b.totalTardiness} (${sign(d)})${rows.some(r=>r.isNew)?" · * 신규 투입 주문":""}`;
+}
+function renderDiff(){
+  const has=!!S.re;
+  $("diffEmpty").hidden=has; $("diffBody").hidden=!has;
+  if(!has) return;
+  const a=S.base,b=S.re;
+  renderTard(a,b);
+  const maxT=Math.max(a.makespan,b.makespan,...S.orders.map(o=>o.due))*1.04;
+  const padL=46,padR=62,padT=20,rowH=15,gap=4,grp=12;
+  const px=Math.max(0.8,Math.min(13,700/maxT));
+  const W=padL+maxT*px+padR, H=padT+b.jobStats.length*(rowH*2+gap+grp)+18;
+  const x=t=>padL+t*px;
+  let g="",y=padT;
+  const raw=maxT/7, mag=Math.pow(10,Math.floor(Math.log10(raw))), step=[1,2,5,10].map(v=>v*mag).find(v=>v>=raw)||mag*10;
+  for(let t=0;t<=maxT;t+=step){
+    g+=`<line x1="${x(t).toFixed(1)}" y1="${padT-5}" x2="${x(t).toFixed(1)}" y2="${H-18}" stroke="var(--line)"/>`;
+    g+=`<text x="${x(t).toFixed(1)}" y="${padT-10}" fill="var(--ink-muted)" font-size="9.5" text-anchor="middle" font-family="var(--font-mono)">${t}</text>`;
+  }
+  b.jobStats.forEach(j=>{
+    const i=jobIdx(j.id), pa=a.jobStats.find(z=>z.id===j.id);
+    const before=pa?pa.completion:null, after=j.completion, d=before===null?null:after-before;
+    const y2=y+rowH+2, dx=x(j.due), dc=j.onTime?"var(--good)":"var(--crit)";
+    g+=`<text x="${padL-9}" y="${y+rowH-1}" fill="var(--ink-2)" font-size="11" font-weight="600" text-anchor="end" font-family="var(--font-mono)">${esc(j.id)}</text>`;
+    g+=`<line x1="${dx.toFixed(1)}" y1="${y-3}" x2="${dx.toFixed(1)}" y2="${y2+rowH-1}" stroke="${dc}" stroke-width="1.5"/>`;
+    g+=`<path d="M${(dx-4).toFixed(1)} ${y-6} L${(dx+4).toFixed(1)} ${y-6} L${dx.toFixed(1)} ${y-1} Z" fill="${dc}"/>`;
+    const halo=`paint-order="stroke" stroke="var(--surface-2)" stroke-width="3.5" stroke-linejoin="round"`;
+    if(before!==null){
+      g+=`<rect x="${padL}" y="${y}" width="${Math.max(2,before*px).toFixed(1)}" height="${rowH-2}" rx="3" fill="var(--rail)"/>`;
+      g+=`<text x="${(x(before)+6).toFixed(1)}" y="${y+rowH-4.5}" ${halo} fill="var(--ink-muted)" font-size="9.5" font-family="var(--font-mono)">${before}</text>`;
+    } else {
+      g+=`<text x="${padL+4}" y="${y+rowH-4.5}" ${halo} fill="var(--ink-muted)" font-size="9.5">신규</text>`;
+    }
+    g+=`<rect x="${padL}" y="${y2}" width="${Math.max(2,after*px).toFixed(1)}" height="${rowH-2}" rx="3" fill="${jobColor(i)}"/>`;
+    g+=`<text x="${(x(after)+6).toFixed(1)}" y="${y2+rowH-4.5}" ${halo} fill="${j.onTime?"var(--good-ink)":"var(--crit)"}" font-size="9.5" font-weight="600" font-family="var(--font-mono)">${after}${d!==null&&d!==0?` (${sign(d)})`:""}</text>`;
+    y=y2+rowH+grp;
+  });
+  $("diffChart").innerHTML=`<svg viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}" role="img" aria-label="주문별 완료시각 변경 전후 비교">${g}</svg>`;
+  $("diffTbl").innerHTML=
+    `<thead><tr><th>주문</th><th>납기</th><th>변경 전 완료</th><th>변경 후 완료</th><th>변화</th><th>변경 전 지연</th><th>변경 후 지연</th><th>상태 변화</th></tr></thead><tbody>`+
+    b.jobStats.map(j=>{
+      const pa=a.jobStats.find(z=>z.id===j.id);
+      const d=pa?j.completion-pa.completion:null;
+      let st;
+      if(!pa) st='<span class="tag urg">신규 투입</span>';
+      else if(pa.onTime&&!j.onTime) st='<span class="tag bad">준수 → 지연</span>';
+      else if(!pa.onTime&&j.onTime) st='<span class="tag ok">지연 → 준수</span>';
+      else if(j.onTime) st='<span class="tag ok">준수 유지</span>';
+      else st=`<span class="tag hold">지연 ${j.tardiness-pa.tardiness>0?"확대":j.tardiness-pa.tardiness<0?"축소":"유지"}</span>`;
+      return `<tr><td><i class="dot" style="background:${jobColor(jobIdx(j.id))}"></i>${esc(j.id)}</td>
+        <td class="n">${j.due}</td><td class="n">${pa?pa.completion:"—"}</td><td class="n"><b>${j.completion}</b></td>
+        <td class="n"${d&&d>0?' style="color:var(--crit);font-weight:600"':d&&d<0?' style="color:var(--good-ink);font-weight:600"':""}>${d===null?"—":sign(d)}</td>
+        <td class="n">${pa?pa.tardiness:"—"}</td><td class="n">${j.tardiness}</td><td>${st}</td></tr>`;
+    }).join("")
+    +`<tr style="background:var(--surface-2);font-weight:600"><td>합계</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td>
+      <td class="n">${a.totalTardiness}</td><td class="n">${b.totalTardiness}</td>
+      <td>${b.totalTardiness>a.totalTardiness?`<span class="tag bad">+${b.totalTardiness-a.totalTardiness}</span>`:b.totalTardiness<a.totalTardiness?`<span class="tag ok">${b.totalTardiness-a.totalTardiness}</span>`:'<span class="tag hold">변화 없음</span>'}</td></tr>`
+    +`</tbody>`;
+  renderGantt($("ganttA"),a,"machine",{compact:true});
+  renderGantt($("ganttB"),b,"machine",{compact:true,nowLine:b.now??S.now});
+  $("legendDiff").innerHTML=legendHTML();
+}
+
+/* ══════════ AI 분석 에이전트 ══════════ */
+const EXAMPLES=[
+  "3호기가 12시부터 15시간 멈췄어. 일정 다시 잡고 어떤 주문이 위험한지 알려줘.",
+  "긴급 주문 하나 추가해줘. 납기는 40이야.",
+  "설비 M1이 20시부터 8시간 점검에 들어가. 영향 분석해줘.",
+  "변경 전후를 비교해서 설명해줘.",
+  "원래 일정으로 되돌려줘."
+];
+const TOOL_NAMES=["machine_breakdown","add_urgent_order","get_current_schedule","get_comparison","reset_schedule"];
+
+// 오프라인용 해석기 — agent.py RuleBasedAgent.parse 와 같은 규칙
+function parseNL(text){
+  const t=text.trim(), r={intents:[],raw:t};
+  const mm=t.match(/(?:설비\s*)?M\s*(\d{1,2})/i)||t.match(/(\d{1,2})\s*호기/)||t.match(/설비\s*(\d{1,2})/);
+  const machine=mm?Math.min(inst().nm-1,Math.max(0,+mm[1])):0;
+  let start=null,dur=null;
+  // "12시부터 15시간" → 12에서 15시간 동안 / "12시부터 27시까지", "10~24" → 구간
+  const rng=t.match(/(\d+)\s*(?:시간|시|h)?\s*(부터|에서|~|-|–)\s*(\d+)\s*(시간|h|동안|간|시|까지)?/);
+  const sm=t.match(/(\d+)\s*시\s*(?:부터|에|쯤|경)/);
+  if(sm) start=+sm[1];
+  if(rng){
+    const a=+rng[1], sep=rng[2], b=+rng[3], tail=rng[4]||"";
+    const isDur=(sep==="부터"||sep==="에서") && ["시간","h","동안","간"].includes(tail);
+    if(isDur||b<a){ start=start??a; dur=b; } else { start=a; dur=b-a; }
+  }
+  if(dur===null){ const dm=[...t.matchAll(/(\d+)\s*(?:시간|h)\s*(?:동안|간|정도)?/g)]; if(dm.length) dur=+dm[dm.length-1][1]; }
+  if(/고장|정지|중단|멈|다운|점검|불가|셧다운/.test(t))
+    r.intents.push({type:"breakdown",machine,start:start??S.now,dur:dur||10});
+  if(/긴급|급한|끼워|신규\s*주문|주문\s*추가|추가\s*주문/.test(t)){
+    const dm=t.match(/납기\s*(?:는|가|을|를)?\s*(\d+)/)||t.match(/(\d+)\s*(?:까지|이내)/);
+    const nM=t.match(/공정\s*(\d+)/);
+    r.intents.push({type:"urgent",due:dm?+dm[1]:S.now+30,release:S.now,nops:nM?+nM[1]:4});
+  }
+  if(/되돌|원복|초기화|리셋|취소/.test(t)) r.intents.push({type:"reset"});
+  if(/재편성|다시|재계산|리스케줄|재배정|재조정/.test(t)) r.intents.push({type:"reschedule"});
+  if(!r.intents.length) r.intents.push({type:"analyze"});
+  return r;
+}
+function randomRoute(nops,seed){
+  const rnd=rngFrom(seed), ms=Array.from({length:inst().nm},(_,i)=>i);
+  for(let i=ms.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [ms[i],ms[j]]=[ms[j],ms[i]]; }
+  return ms.slice(0,Math.min(nops,ms.length)).map((m,i)=>({machine:m,dur:3+Math.floor(rnd()*8),idx:i}));
+}
+function addUrgent(release,due,ops){
+  S.uoSeq++;
+  const id="U"+S.uoSeq, twk=ops.reduce((s,o)=>s+o.dur,0);
+  S.orders.push({id,name:"긴급주문 "+id,release:Math.max(0,release),twk,
+    due:due!=null?due:Math.ceil(release+twk*1.3),priority:1,urgent:true,added:true,ops});
+  return id;
+}
+function agentReport(raw,applied,note){
+  const a=S.base,b=S.re||S.base;
+  const dMk=b.makespan-a.makespan, dTT=b.totalTardiness-a.totalTardiness;
+  const dOT=Math.round((b.onTimeRate-a.onTimeRate)*100);
+  const impact=b.jobStats.map(j=>{
+    const pa=a.jobStats.find(z=>z.id===j.id);
+    return {j,pa,delta:pa?j.completion-pa.completion:null,isNew:!pa};
+  }).sort((x,y)=>(y.j.tardiness-x.j.tardiness)||((y.delta||0)-(x.delta||0)));
+  const top=impact.filter(z=>z.j.tardiness>0||(z.delta||0)>0).slice(0,3);
+  const bn=b.machineStats.slice().sort((x,y)=>y.util-x.util)[0];
+  const waitAgg={};
+  for(const j of b.jobStats) for(const [m,w] of Object.entries(j.waitBy)) waitAgg[m]=(waitAgg[m]||0)+w;
+  const qn=Object.entries(waitAgg).sort((x,y)=>y[1]-x[1])[0];
+
+  let h="";
+  h+=`<div class="rsec"><h4>상황 해석</h4>`;
+  h+=`<p>입력: “${esc(raw)}”</p>`;
+  h+=applied.length?`<ul>${applied.map(s=>`<li>${s}</li>`).join("")}</ul>`
+                   :`<p>적용할 변경 조건이 없어 현재 일정을 기준으로 분석했습니다.</p>`;
+  h+=`</div>`;
+  if(S.re){
+    h+=`<div class="rsec"><h4>재편성 결과</h4><p>`;
+    h+=`기준시각 <strong class="mono">t=${S.re.now??S.now}</strong> 이전에 착수한 공정을 고정하고 잔여 공정을 다시 배정했습니다. `;
+    h+=`총 완료시간은 <strong class="mono">${a.makespan} → ${b.makespan}</strong> (${sign(dMk)}), `;
+    h+=`총 납기지연은 <strong class="mono">${a.totalTardiness} → ${b.totalTardiness}</strong> (${sign(dTT)}), `;
+    h+=`납기 준수율은 <strong class="mono">${pct(a.onTimeRate)} → ${pct(b.onTimeRate)}</strong> (${sign(dOT)}%p) 입니다.</p>`;
+    h+=dTT>0
+      ? `<p>지연이 <strong>${dTT}시간 늘었습니다</strong>. 아래 주문부터 조치가 필요합니다.</p>`
+      : dTT<0 ? `<p>재배정으로 지연이 <strong>${-dTT}시간 줄었습니다</strong>. 변경된 순서를 채택할 만합니다.</p>`
+              : `<p>총 지연은 변하지 않았지만 주문별 완료시각은 바뀌었습니다.</p>`;
+    h+=`</div>`;
+  }
+  h+=`<div class="rsec"><h4>납기 영향이 큰 주문</h4>`;
+  if(!top.length){ h+=`<p>모든 주문이 납기를 지키고 있고, 완료시각이 늦어진 주문도 없습니다.</p>`; }
+  else{
+    h+=`<ul>`;
+    for(const z of top){
+      const j=z.j;
+      h+=`<li><strong>${esc(j.id)}</strong>${z.isNew?" (신규 투입)":""} — 완료 `;
+      h+=z.pa?`<span class="mono">${z.pa.completion} → ${j.completion}</span>${z.delta?` (${sign(z.delta)})`:""}`:`<span class="mono">${j.completion}</span>`;
+      h+=`, 납기 <span class="mono">${j.due}</span> → `;
+      h+=j.tardiness>0?`<strong>${j.tardiness}시간 지연</strong>`:`납기 준수`;
+      if(j.bnM!==null&&j.bnW>0) h+=`. 대기시간 ${j.waiting}시간 중 <strong class="mono">M${j.bnM}</strong> 앞에서 ${j.bnW}시간을 기다립니다`;
+      h+=`.</li>`;
+    }
+    h+=`</ul>`;
+  }
+  h+=`</div>`;
+  h+=`<div class="rsec"><h4>병목 진단</h4><p>`;
+  h+=`가동률이 가장 높은 설비는 <strong class="mono">M${bn.machine}</strong> (${pct(bn.util)}, 작업 ${bn.numOps}건)`;
+  if(qn) h+=`이고, 주문 대기시간이 가장 많이 발생하는 지점은 <strong class="mono">M${qn[0]}</strong> (누적 대기 ${qn[1]}시간)`;
+  h+=`입니다.`;
+  const downs=(b.breakdowns||[]);
+  if(downs.length) h+=` 가동 중단은 ${downs.map(d=>`M${d.machine} ${d.start}~${d.end}`).join(", ")}이며 중단 시간 합계는 ${downs.reduce((s,d)=>s+(d.end-d.start),0)}시간입니다.`;
+  h+=`</p></div>`;
+  h+=`<div class="rsec"><h4>우선 조치 제안</h4><ul>`;
+  const acts=[];
+  if(top.length) acts.push(`<strong>${esc(top[0].j.id)}</strong>의 잔여 공정을 우선 배정하거나 납기를 ${top[0].j.completion}시각으로 재협의`);
+  if(qn && +qn[0]!==bn.machine) acts.push(`<strong class="mono">M${qn[0]}</strong> 대기열 해소 — 대체설비 배정 또는 잔업 투입 검토`);
+  if(bn.util>0.7) acts.push(`<strong class="mono">M${bn.machine}</strong> 가동률 ${pct(bn.util)} — 추가 투입 시 전체 일정이 밀릴 가능성이 높음`);
+  const lowPrioTardy=b.jobStats.filter(j=>j.tardiness>0&&j.priority>=3);
+  if(lowPrioTardy.length) acts.push(`여유 등급 주문 ${lowPrioTardy.map(j=>esc(j.id)).join(", ")}의 납기를 뒤로 미루면 상위 주문 지연을 흡수할 수 있음`);
+  const downSet=new Set(downs.map(d=>d.machine));
+  const idleM=b.machineStats.filter(m=>m.util<0.4&&!downSet.has(m.machine));
+  if(idleM.length) acts.push(`가동률이 낮은 ${idleM.map(m=>`<span class="mono">M${m.machine}</span>`).join(", ")}로 공정을 옮길 수 있다면 ${qn?`M${qn[0]}`:"병목"} 부하를 분산 가능`);
+  if(!acts.length) acts.push(`현재 일정은 모든 주문이 납기 내 완료됩니다. 추가 조치가 필요하지 않습니다.`);
+  h+=acts.map(s=>`<li>${s}</li>`).join("")+`</ul></div>`;
+  h+=evidenceHTML(b);
+  return `<div class="report"><div class="rh">상황 분석 · 영향 평가 · 조치 제안</div><div class="rb">${h}</div></div>
+    <div class="note">${note}</div>`;
+}
+function evidenceHTML(b){
+  return `<div class="rsec"><h4>근거 데이터</h4>
+    <div class="tbl-scroll"><table><thead><tr><th>주문</th><th>완료</th><th>납기</th><th>지연</th><th>대기</th><th>최다 대기 설비</th></tr></thead><tbody>`+
+    b.jobStats.map(j=>`<tr><td><i class="dot" style="background:${jobColor(jobIdx(j.id))}"></i>${esc(j.id)}</td>
+      <td class="n">${j.completion}</td><td class="n">${j.due}</td>
+      <td class="n"${j.tardiness>0?' style="color:var(--crit);font-weight:600"':""}>${j.tardiness}</td>
+      <td class="n">${j.waiting}</td>
+      <td class="n">${j.bnM!==null?`M${j.bnM} (${j.bnW})`:"—"}</td></tr>`).join("")+
+    `</tbody></table></div></div>`;
+}
+function appliedFromCalls(calls){
+  return (calls||[]).map(c=>{
+    if(!c.ok) return `<span style="color:var(--crit)"><code class="mono">${esc(c.name)}</code> 실패 — ${esc(c.result)}</span>`;
+    const r=c.result||{};
+    if(r["적용"]) return esc(r["적용"])+((r["안내"]||[]).length?`<ul>${r["안내"].map(n=>`<li>${esc(n)}</li>`).join("")}</ul>`:"");
+    if(c.name==="get_current_schedule") return "현재 일정을 조회했습니다 (변경 없음).";
+    if(c.name==="get_comparison") return "변경 전후 비교표를 조회했습니다 (변경 없음).";
+    return esc(c.name);
+  });
+}
+async function runAgentLocal(text){
+  const p=parseNL(text), applied=[], calls=[], nm=inst().nm;
+  let needRe=false, didReset=false;
+  for(const it of p.intents){
+    if(it.type==="breakdown"){
+      const b={machine:it.machine,start:Math.max(0,it.start),end:Math.max(0,it.start)+Math.max(1,it.dur)};
+      const args={machine:b.machine,start:b.start,end:b.end};
+      try{
+        const warns=validateBreakdown(b,nm,S.orders);
+        S.breakdowns.push(b); needRe=true;
+        applied.push(`설비 <strong class="mono">M${b.machine}</strong> 가동 중단 등록 — <span class="mono">${b.start} → ${b.end}</span> (${b.end-b.start}시간)`
+          +(warns.length?`<ul>${warns.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>`:""));
+        calls.push({name:"machine_breakdown",args,ok:true,result:"브라우저에서 등록 후 재계산"});
+      }catch(e){ applied.push(`<span style="color:var(--crit)">${esc(e.message)}</span>`); calls.push({name:"machine_breakdown",args,ok:false,result:e.message}); }
+    } else if(it.type==="urgent"){
+      const ops=randomRoute(it.nops,20251025+S.uoSeq+1), args={due:it.due,release:it.release,num_operations:it.nops};
+      try{
+        const warns=validateUrgent(it.release,it.due,ops,nm);
+        const id=addUrgent(it.release,it.due,ops), o=S.orders.find(x=>x.id===id); needRe=true;
+        applied.push(`긴급 주문 <strong class="mono">${id}</strong> 추가 — 투입 <span class="mono">${o.release}</span>, 납기 <span class="mono">${o.due}</span>, 공정 ${o.ops.length}개 (${o.ops.map(x=>`M${x.machine}·${x.dur}`).join(" → ")})`
+          +(warns.length?`<ul>${warns.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>`:""));
+        calls.push({name:"add_urgent_order",args,ok:true,result:`${id} 추가 후 재계산`});
+      }catch(e){ applied.push(`<span style="color:var(--crit)">${esc(e.message)}</span>`); calls.push({name:"add_urgent_order",args,ok:false,result:e.message}); }
+    } else if(it.type==="reset"){
+      S.breakdowns=[]; S.orders=S.orders.filter(o=>!o.added); S.re=null; S.notes=[]; S.uoSeq=0; didReset=true;
+      await fixOrphans();
+      applied.push(`돌발상황을 모두 제거하고 초기 일정으로 복원`);
+      calls.push({name:"reset_schedule",args:{},ok:true,result:"복원 완료"});
+    } else if(it.type==="reschedule"){ needRe=true; }
+  }
+  if(!calls.length) calls.push({name:"get_current_schedule",args:{},ok:true,result:"현재 일정 조회"});
+  if(needRe && !didReset) await taskRe();
+  const reportHTML=agentReport(text,applied,"서버에 연결되지 않아 브라우저에서 키워드로 조건을 해석하고 휴리스틱으로 계산한 결과입니다. 서버에 연결되면 CP-SAT 와 Claude 가 이 자리를 대신합니다.");
+  const plain=applied.map(s=>s.replace(/<[^>]+>/g,"")).join(" / ")||"현재 일정 분석";
+  return {kind:"offline",text:`[브라우저 규칙 기반] ${plain}`,toolCalls:calls,changed:needRe&&!didReset,reportHTML};
+}
+function agentState(){
+  return {numMachines:inst().nm, orders:S.orders.map(orderPayload), breakdowns:S.breakdowns,
+    solver:effectiveSolver(), objective:S.obj, rule:S.rule, timeLimit:S.timeLimit, restarts:S.restarts, now:S.now,
+    baseOps:S.base.placed, baseMeta:metaOf(S.base),
+    currentOps:S.re?S.re.placed:null, currentMeta:metaOf(S.re), urgentSeq:S.uoSeq};
+}
+function applyAgentState(st){
+  S.orders=st.orders.map(o=>Object.assign(o,{urgent:o.urgent||o.priority===1}));
+  S.breakdowns=st.breakdowns||[];
+  S.re=st.current?Object.assign(st.current,{source:"server"}):null;
+  S.notes=st.notes||[]; S.uoSeq=st.urgentSeq||0;
+  if(Number.isFinite(st.now)) S.now=st.now;
+  S.calcAt=new Date();
+}
+async function agentTask(text,hist){
+  if(SRV.state==="ok"){
+    try{
+      const r=await api("/api/agent",{message:text,history:hist,state:agentState(),
+        apiKey:SRV.apiKey||undefined,model:SRV.model,passcode:SRV.passcode||undefined},{timeout:300000});
+      applyAgentState(r.state);
+      await fixOrphans();
+      const reportHTML = r.mode==="rule"
+        ? agentReport(text,appliedFromCalls(r.toolCalls),"Claude API 키가 없어 키워드로 의도를 뽑아 같은 도구를 호출했습니다. 숫자는 모두 서버 스케줄러의 계산값입니다. API 설정에서 키를 넣으면 Claude 가 자연어로 분석합니다.")
+        : "";
+      return {kind:r.mode,text:r.text,toolCalls:r.toolCalls,usage:r.usage,model:r.model,keySource:r.keySource,changed:r.changed,reportHTML};
+    }catch(e){
+      if(!e.network) throw e;
+      goOffline("서버 연결이 끊겨 브라우저에서 규칙 기반으로 분석합니다.");
+    }
+  }
+  return runAgentLocal(text);
+}
+function chatHistory(){
+  return S.chat.filter(m=>!m.pending && m.kind!=="error" && (m.text||"").trim())
+    .map(m=>({role:m.role,content:m.text}));
+}
+function sendAgent(text){
+  text=(text||"").trim(); if(!text) return;
+  if(text.length>1000){ showAlert("warn","상황 입력은 1000자 이내로 적어 주세요."); return; }
+  const hist=chatHistory();
+  S.chat.push({role:"user",text});
+  const willClaude=SRV.state==="ok" && (SRV.apiKey||SRV.serverKey);
+  const pm={role:"assistant",pending:true,kind:SRV.state!=="ok"?"offline":(willClaude?"claude":"rule")};
+  S.chat.push(pm);
+  $("nlIn").value="";
+  renderChat(true);
+  enqueue(async()=>{
+    let res;
+    try{ res=await agentTask(text,hist); }
+    catch(e){ res={kind:"error",text:e.message||String(e),needPasscode:!!(e.data&&e.data.needPasscode)}; }
+    Object.assign(pm,{pending:false},res);
+    renderChat(true);
+  });
+}
+
+// Claude 응답용 마크다운 (굵게 · 목록 · 제목 · 코드만, HTML 은 전부 이스케이프)
+function md(src){
+  const inline=s=>s.replace(/`([^`]+)`/g,'<code class="mono">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g,"$1<em>$2</em>");
+  const out=[], stack=[];
+  const closeTo=lvl=>{ while(stack.length>lvl){ out.push(`</li></${stack.pop()}>`); } };
+  for(const raw of esc(src||"").split(/\r?\n/)){
+    const line=raw.replace(/\s+$/,"");
+    let m;
+    if(!line.trim()){ closeTo(0); continue; }
+    if((m=line.match(/^\s*#{1,4}\s+(.*)$/))){ closeTo(0); out.push(`<h4>${inline(m[1])}</h4>`); continue; }
+    if((m=line.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/))){
+      const lvl=Math.min(3,Math.floor(m[1].replace(/\t/g,"  ").length/2)+1), tag=/\d/.test(m[2])?"ol":"ul";
+      if(stack.length<lvl){ while(stack.length<lvl){ out.push(`<${tag}><li>`); stack.push(tag); } }
+      else { closeTo(lvl); out.push(`</li><li>`); }
+      out.push(inline(m[3])); continue;
+    }
+    if(/^\s*(-{3,}|\*{3,})\s*$/.test(line)){ closeTo(0); continue; }
+    if(stack.length){ out.push(" "+inline(line.trim())); continue; }
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  closeTo(0);
+  return out.join("");
+}
+function modeTag(kind){
+  return {claude:'<span class="tag urg">Claude API</span>',rule:'<span class="tag hold">규칙 기반</span>',
+          offline:'<span class="tag bad">오프라인 · 브라우저</span>',error:'<span class="tag bad">오류</span>'}[kind]||"";
+}
+function toolsHTML(calls){
+  if(!calls||!calls.length) return "";
+  return `<details class="tools"><summary>도구 호출 ${calls.length}건 · 숫자는 모두 스케줄러가 계산한 값입니다</summary>`+
+    calls.map(c=>`<div class="tc">${c.ok?'<span class="tag ok">성공</span>':'<span class="tag bad">실패</span>'}
+      <code class="mono">${esc(c.name)}</code> <span class="mono" style="color:var(--ink-muted)">${esc(JSON.stringify(c.args||{}))}</span>
+      <pre>${esc(typeof c.result==="string"?c.result:JSON.stringify(c.result,null,2))}</pre></div>`).join("")+`</details>`;
+}
+function msgHTML(m){
+  if(m.role==="user") return `<div class="msg user"><div class="mh">입력</div><div class="mb">${esc(m.text)}</div></div>`;
+  if(m.pending) return `<div class="msg"><div class="mh">${modeTag(m.kind)}</div><div class="mb"><div class="typing"><span class="spin"></span>${
+    m.kind==="claude"?"Claude 가 도구를 호출하며 분석하고 있습니다…":"조건을 해석하고 일정을 다시 계산하고 있습니다…"}</div></div></div>`;
+  if(m.kind==="error") return `<div class="msg"><div class="mh">${modeTag("error")}</div><div class="mb">${alertHTML("err",esc(m.text),false)}
+    <div class="btnrow" style="margin-top:8px"><button class="btn ghost" type="button" data-open-api>API 설정 열기</button></div></div></div>`;
+  const u=m.usage||{};
+  const head=[modeTag(m.kind)];
+  if(m.kind==="claude"){
+    head.push(`<span class="mono">${esc(m.model||"")}</span>`);
+    head.push(`<span>${m.keySource==="user"?"입력한 키":"서버 키"}</span>`);
+    if(u.input_tokens) head.push(`<span class="mono">입력 ${(+u.input_tokens).toLocaleString()} · 출력 ${(+u.output_tokens||0).toLocaleString()} 토큰</span>`);
+  }
+  const body=m.kind==="claude"?`<div class="md">${md(m.text)}</div>`:m.reportHTML;
+  const changed=m.changed?`<div class="note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">일정이 재편성됐습니다.
+    <button class="btn ghost" type="button" data-go="diff">[04] 변경 전후 비교 보기</button>
+    <button class="btn ghost" type="button" data-go="event">[03] 재편성 간트 보기</button></div>`:"";
+  return `<div class="msg"><div class="mh">${head.join(" ")}</div><div class="mb">${body}${toolsHTML(m.toolCalls)}${changed}</div></div>`;
+}
+function renderChat(scroll){
+  const el=$("chatLog");
+  el.innerHTML=S.chat.length?S.chat.map(msgHTML).join("")
+    :`<div class="empty">아직 대화가 없습니다. 아래 입력 예시를 누르거나 상황을 문장으로 입력하세요.</div>`;
+  el.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>{ showTab(b.dataset.go,true); window.scrollTo({top:0}); }));
+  el.querySelectorAll("[data-open-api]").forEach(b=>b.addEventListener("click",openApi));
+  if(scroll){ const last=el.lastElementChild; if(last) last.scrollIntoView({behavior:"smooth",block:"nearest"}); }
+}
+function renderAgentMode(){
+  let mode,detail;
+  if(SRV.state!=="ok"){ mode=modeTag("offline"); detail="서버에 연결되지 않아 브라우저에서 키워드로 해석하고 휴리스틱으로 계산합니다."; }
+  else if(SRV.apiKey||SRV.serverKey){
+    mode=modeTag("claude");
+    detail=`<span class="mono">${esc(SRV.model)}</span> · ${SRV.apiKey?"입력한 키":"서버 키"}`
+      +((!SRV.apiKey&&SRV.passcodeRequired&&!SRV.passcode)?' · <b style="color:var(--warn)">접속 코드 필요</b>':"");
+  } else { mode=modeTag("rule"); detail="API 키가 없어 키워드로 의도를 뽑아 같은 도구를 호출합니다."; }
+  $("agentMode").innerHTML=`<span>실행 모드</span> ${mode} <span>${detail}</span>
+    <button class="btn ghost" type="button" id="agentApiBtn" style="padding:3px 9px;font-size:11.5px">API 설정</button>
+    <span style="flex-basis:100%">도구: ${TOOL_NAMES.map(n=>`<code class="mono">${n}</code>`).join(" ")}</span>`;
+  $("agentApiBtn").addEventListener("click",openApi);
+}
+
+/* ══════════ 서버 상태 · API 설정 ══════════ */
+function renderSrv(){
+  const c=$("srvChip"); c.dataset.s=SRV.state;
+  c.textContent = SRV.state==="ok" ? (SRV.cpsat?"서버 연결 · CP-SAT":"서버 연결 · 휴리스틱")
+               : SRV.state==="off" ? "오프라인 · 브라우저 계산" : "서버 연결 중";
+  c.title = SRV.state==="off" ? "서버에 닿지 않아 브라우저 안에서 계산합니다. API 설정에서 다시 연결할 수 있습니다." : "";
+  $("catalogHint").textContent = SRV.catalog ? `OR-Library jobshop1.txt · 인스턴스 ${CATALOG.length}개`
+                                             : `내장 인스턴스 ${CATALOG.length}개${SRV.state==="ok"?"":" · 서버 연결 시 82개"}`;
+  renderAgentMode();
+  if($("apiDlg").open) renderSrvInfo();
+}
+function renderSrvInfo(){
+  const st={ok:"연결됨",off:"연결 안 됨 (브라우저 계산 중)",connecting:"연결 중…"}[SRV.state];
+  $("srvInfo").innerHTML=`<dt>서버</dt><dd>${st}</dd>
+    <dt>주소</dt><dd class="mono">${esc(API_BASE||location.origin)}</dd>
+    <dt>계산 엔진</dt><dd>${SRV.state!=="ok"?"브라우저 휴리스틱":SRV.cpsat?"OR-Tools CP-SAT 사용 가능":"휴리스틱만 (ortools 미설치)"}</dd>
+    <dt>Claude API 키</dt><dd>${SRV.state!=="ok"?"—":SRV.serverKey
+      ?"서버에 저장됨 · 입력할 필요 없음"+(SRV.passcodeRequired?" (접속 코드 필요)":"")
+      :"서버에 없음 — 아래에 키를 넣거나 규칙 기반으로 동작"}</dd>`;
+  // 서버에 키가 있으면 입력란을 숨긴다 (키는 서버 환경변수에만 있고 화면으로 내려오지 않는다)
+  const useServerKey=SRV.state==="ok" && SRV.serverKey;
+  $("keyField").hidden=useServerKey;
+  if(useServerKey){ SRV.apiKey=""; $("keyIn").value=""; }
+  $("passField").hidden=!(SRV.passcodeRequired);
+}
+function openApi(){
+  $("keyIn").value=SRV.apiKey; $("passIn").value=SRV.passcode;
+  const models=[...new Set([...SRV.models,SRV.model])];
+  $("modelSel").innerHTML=models.map(m=>`<option value="${esc(m)}"${m===SRV.model?" selected":""}>${esc(m)}</option>`).join("");
+  renderSrvInfo();
+  $("apiDlg").showModal();
+}
+function saveApi(){
+  SRV.apiKey=$("keyIn").value.trim(); SRV.passcode=$("passIn").value;
+  if($("modelSel").value && $("modelSel").value!==SRV.model){ SRV.model=$("modelSel").value; SRV.modelTouched=true; }
+  renderAgentMode();
+}
+async function loadCatalog(){
+  try{
+    const r=await api("/api/instances",undefined,{timeout:45000});
+    if(!r.instances||r.instances.length<=1) return;
+    const list=r.instances.map(m=>({key:m.key,n:m.n,nj:m.nj,nm:m.nm,opt:m.opt}));
+    for(const k in INSTANCES) if(!list.find(c=>c.key===k)) list.push({key:k,n:INSTANCES[k].n,nj:INSTANCES[k].nj,nm:INSTANCES[k].nm,opt:INSTANCES[k].opt});
+    for(const m of r.instances) if(INSTANCES[m.key]) INSTANCES[m.key].description=m.description;
+    CATALOG=list; SRV.catalog=r.source==="jobshop1.txt";
+    renderInstSel(); renderSrv();
+  }catch(e){}
+}
+function renderInstSel(){
+  $("instSel").innerHTML=CATALOG.map(I=>
+    `<option value="${esc(I.key)}"${I.key===S.instKey?" selected":""}>${esc(I.n)} (${I.nj}×${I.nm}${I.opt?", 최적 "+I.opt:""})</option>`).join("");
+}
+async function ensureInstance(key){
+  if(INSTANCES[key]&&INSTANCES[key].jobs) return INSTANCES[key];
+  const r=await api(`/api/instances/${encodeURIComponent(key)}`,undefined,{timeout:45000});
+  INSTANCES[key]={n:r.n,nj:r.nj,nm:r.nm,opt:r.opt,ref:r.description,description:r.description,jobs:r.jobs};
+  return INSTANCES[key];
+}
+async function connectServer(){
+  SRV.state="connecting"; renderSrv();
+  try{
+    const h=await api("/api/health",undefined,{timeout:75000});
+    Object.assign(SRV,{state:"ok",cpsat:!!h.cpsat,serverKey:!!h.serverKey,passcodeRequired:!!h.passcodeRequired});
+    if(Array.isArray(h.models)&&h.models.length) SRV.models=h.models;
+    if(!SRV.modelTouched&&h.defaultModel) SRV.model=h.defaultModel;
+    renderSrv(); renderData();
+    loadCatalog();
+    recalc(true);
+  }catch(e){
+    SRV.state="off"; renderSrv(); renderData();
+  }
+}
+
+/* ══════════ 탭 · 초기화 ══════════ */
+const TABS=["data","plan","event","diff","agent"];
+const TABMETA={
+  data:{g:"기준정보관리",t:"주문·설비 기준정보",
+        d:"OR-Library 공정 데이터에 납기·우선순위·투입시각을 부여해 계획 기준정보를 구성합니다."},
+  plan:{g:"생산계획수립",t:"초기 생산일정 수립",
+        d:"납기와 가공시간, 설비 가용성을 고려해 작업 순서와 설비별 시작·종료시각을 산출합니다."},
+  event:{g:"생산계획수립",t:"돌발상황 일정 재편성",
+        d:"긴급 주문 추가와 설비 고장을 반영해 잔여 생산일정을 다시 계산합니다."},
+  diff:{g:"실적·분석",t:"변경 전후 일정 비교",
+        d:"주문별 완료 예정시각과 납기 지연시간을 변경 전후로 대조합니다."},
+  agent:{g:"실적·분석",t:"일정 변경 영향 분석",
+        d:"자연어로 입력한 상황을 AI 가 해석해 스케줄러 도구를 호출하고, 지연 원인과 조치 대상을 설명합니다."}
+};
+function showTab(k,push){
+  if(!TABS.includes(k)) k="data";
+  const m=TABMETA[k];
+  $("crumb").innerHTML=`<span>홈</span><i>›</i><span>${m.g}</span><i>›</i><b>${m.t}</b>`;
+  $("pageTitle").textContent=m.t;
+  $("pageDesc").textContent=m.d;
+  TABS.forEach(t=>{
+    const btn=$("t-"+t), pan=$("p-"+t);
+    const on=t===k;
+    btn.setAttribute("aria-selected",on?"true":"false");
+    btn.tabIndex=on?0:-1; pan.hidden=!on;
+  });
+  if(push){ try{ history.replaceState(null,"","#"+k); }catch(e){} }
+}
+function renderAll(){
+  if(!S.base) return;
+  renderKpis(); renderData(); renderPlan(); renderEvent(); renderDiff(); renderAgentMode();
+}
+function resetScenario(){
+  S.breakdowns=[]; S.uoSeq=0; S.orders=buildOrders(inst(),S.k); S.re=null; S.notes=[];
+  S.chat=[]; renderChat(); setMsgs("bdMsg",[]); setMsgs("uoMsg",[]);
+}
+
+function init(){
+  renderInstSel();
+  $("ruleSel").innerHTML=Object.entries(RULES).map(([k,v])=>
+    `<option value="${k}"${k===S.rule?" selected":""}>${v.label}</option>`).join("");
+  $("exChips").innerHTML=EXAMPLES.map(e=>`<button type="button">${esc(e)}</button>`).join("");
+  $("exChips").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>sendAgent(b.textContent)));
+
+  S.orders=buildOrders(inst(),S.k);
+  S.base=localCompute(false).sched; S.calcAt=new Date();
+  renderAll(); renderChat(); renderSrv();
+  showTab((location.hash||"#data").slice(1).split("?")[0],false);
+
+  TABS.forEach(t=>$("t-"+t).addEventListener("click",()=>showTab(t,true)));
+  $("instSel").addEventListener("change",async e=>{
+    const key=e.target.value;
+    try{ await ensureInstance(key); }
+    catch(err){ showAlert("err",`인스턴스를 불러오지 못했습니다: ${err.message}`); e.target.value=S.instKey; return; }
+    S.instKey=key; resetScenario(); S.now=Math.max(1,Math.round(inst().nj*1.6));
+    enqueue(taskBase);
+  });
+  let kTimer=null;
+  $("kSlider").addEventListener("input",e=>{
+    S.k=+e.target.value; $("kVal").textContent=S.k.toFixed(2);
+    for(const o of S.orders) if(!o.added) o.due=o.release+Math.ceil(o.twk*S.k);
+    clearTimeout(kTimer); kTimer=setTimeout(()=>enqueue(taskBase),300);
+  });
+  $("ruleSel").addEventListener("change",e=>{ S.rule=e.target.value; if(S.solver==="cpsat") renderAll(); else recalc(true); });
+  const seg=(aId,bId,set)=>{
+    $(aId).addEventListener("click",()=>{ $(aId).setAttribute("aria-pressed","true"); $(bId).setAttribute("aria-pressed","false"); set(0); });
+    $(bId).addEventListener("click",()=>{ $(bId).setAttribute("aria-pressed","true"); $(aId).setAttribute("aria-pressed","false"); set(1); });
+  };
+  [["solCp","cpsat"],["solHe","heuristic"],["solRu","rule"]].forEach(([id,v])=>$(id).addEventListener("click",()=>{
+    if(S.solver===v) return; S.solver=v; renderData(); recalc(true);
+  }));
+  const setObj=v=>{ if(S.obj===v) return; S.obj=v; renderData(); recalc(true); };
+  seg("objTard","objMk",i=>setObj(i?"makespan":"tardiness"));
+  seg("objTard2","objMk2",i=>setObj(i?"makespan":"tardiness"));
+  $("tlIn").addEventListener("change",e=>{
+    const v=Math.min(60,Math.max(1,Math.round(+e.target.value||10))); e.target.value=v;
+    if(v===S.timeLimit) return; S.timeLimit=v; if(S.solver!=="rule") recalc(true);
+  });
+  seg("gvM","gvJ",i=>{ S.gv=i?"job":"machine"; renderPlan(); });
+  seg("gvM2","gvJ2",i=>{ S.gv2=i?"job":"machine"; renderEvent(); });
+
+  $("nowS").addEventListener("input",e=>{ S.now=+e.target.value; $("nowVal").textContent=S.now; updateFrozenHint(); });
+  $("addBd").addEventListener("click",()=>{
+    try{
+      const m=intOf($("bdM").value,"설비"), s=intOf($("bdS").value,"시작 시각"), d=intOf($("bdD").value,"중단 시간");
+      if(d<1) throw new InputError("중단 시간은 1 이상이어야 합니다.");
+      const b={machine:m,start:s,end:s+d};
+      const warns=validateBreakdown(b,inst().nm,S.orders);
+      S.breakdowns.push(b); S.re=null; S.notes=[];
+      setMsgs("bdMsg",[["ok",`M${m} ${b.start}→${b.end} 가동중단을 등록했습니다. ‘잔여 일정 재계산’을 누르세요.`],...warns.map(w=>["warn",w])]);
+      renderAll();
+    }catch(e){ setMsgs("bdMsg",[["err",e.message]]); }
+  });
+  $("addUo").addEventListener("click",()=>{
+    try{
+      const r=intOf($("uoR").value,"투입 시각"), d=intOf($("uoD").value,"납기"); let n=intOf($("uoN").value,"공정 수");
+      if(n<1) throw new InputError("공정 수는 1 이상이어야 합니다.");
+      const msgs=[];
+      if(n>inst().nm){ msgs.push(["warn",`공정 수를 설비 수(${inst().nm})에 맞춰 ${inst().nm}개로 줄였습니다.`]); n=inst().nm; }
+      const ops=randomRoute(n,20251025+S.uoSeq+1);
+      const warns=validateUrgent(r,d,ops,inst().nm);
+      const id=addUrgent(r,d,ops);
+      setMsgs("uoMsg",[["ok",`긴급 주문 ${id} 를 등록했습니다 — ${ops.map(x=>`M${x.machine}·${x.dur}`).join(" → ")}`],...msgs,...warns.map(w=>["warn",w])]);
+      enqueue(taskBase);
+    }catch(e){ setMsgs("uoMsg",[["err",e.message]]); }
+  });
+  $("runRe").addEventListener("click",()=>enqueue(async()=>{ await taskRe(); showTab("diff",true); window.scrollTo({top:0}); }));
+  $("resetRe").addEventListener("click",()=>{
+    S.breakdowns=[]; S.orders=S.orders.filter(o=>!o.added); S.uoSeq=0; S.re=null; S.notes=[];
+    setMsgs("bdMsg",[]); setMsgs("uoMsg",[]); enqueue(taskBase);
+  });
+  $("resetAll").addEventListener("click",()=>{
+    S.k=1.3; $("kSlider").value=1.3; $("kVal").textContent="1.30"; S.now=10;
+    resetScenario(); enqueue(taskBase);
+  });
+  $("nlRun").addEventListener("click",()=>sendAgent($("nlIn").value));
+  $("nlIn").addEventListener("keydown",e=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){ e.preventDefault(); if(!pending) sendAgent($("nlIn").value); } });
+  $("nlClear").addEventListener("click",()=>{ $("nlIn").value=""; S.chat=[]; renderChat(); });
+
+  $("apiBtn").addEventListener("click",openApi);
+  $("apiClose").addEventListener("click",()=>{ saveApi(); $("apiDlg").close(); });
+  $("apiDlg").addEventListener("close",saveApi);
+  ["keyIn","passIn","modelSel"].forEach(id=>$(id).addEventListener("change",saveApi));
+  $("reconnBtn").addEventListener("click",()=>{ saveApi(); connectServer(); });
+
+  $("themeBtn").addEventListener("click",()=>{
+    const cur=document.documentElement.getAttribute("data-theme");
+    const dark=cur==="dark" || (!cur && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.setAttribute("data-theme",dark?"light":"dark");
+    renderAll();
+  });
+
+  connectServer();
+}
+init();
+</script>
+</body>
+</html>

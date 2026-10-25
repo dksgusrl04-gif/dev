@@ -1,0 +1,5 @@
+# 배포 서버용 (Render 등). Streamlit 패키지는 빼서 설치를 가볍게 한다.
+starlette>=0.37
+uvicorn>=0.30
+ortools>=9.10
+anthropic>=0.40

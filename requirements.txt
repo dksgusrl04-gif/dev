@@ -1,0 +1,10 @@
+# 웹 버전 (static/index.html + server.py)
+starlette>=0.37
+uvicorn>=0.30
+ortools>=9.10
+anthropic>=0.40
+
+# Streamlit 버전 (app.py) — 계속 쓸 때만 필요
+streamlit>=1.50
+plotly>=5.20
+pandas>=2.0
