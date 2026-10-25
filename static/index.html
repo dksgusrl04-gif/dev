@@ -840,11 +840,14 @@ const orderPayload=o=>({id:o.id,name:o.name,release:o.release,due:o.due,priority
   ops:o.ops.map(op=>({machine:op.machine,dur:op.dur}))});
 const metaOf=s=>s?{status:s.status,solveSeconds:s.solveSeconds,solver:s.solver,breakdowns:s.breakdowns}:null;
 function effectiveSolver(){ return (S.solver==="cpsat" && !SRV.cpsat) ? "heuristic" : S.solver; }
+// 초기 일정은 원래 주문만으로 세운다. 시연 중 추가한 긴급 주문은 재편성 때 '신규 투입'으로 끼워 넣는다.
+const baseOrders=()=>S.orders.filter(o=>!o.added);
 
 function localCompute(re){
   const t0=performance.now(), mode=S.solver==="rule"?"rule":"optimize";
-  const totalOps=S.orders.reduce((s,o)=>s+o.ops.length,0);
-  const iters=Math.max(60,Math.min(S.restarts,Math.floor(400000/Math.max(1,totalOps*S.orders.length))));
+  const orders=re?S.orders:baseOrders();
+  const totalOps=orders.reduce((s,o)=>s+o.ops.length,0);
+  const iters=Math.max(60,Math.min(S.restarts,Math.floor(400000/Math.max(1,totalOps*orders.length))));
   let opts={}, notes=[];
   if(re){
     const live=new Set(S.orders.map(o=>o.id));
@@ -853,14 +856,14 @@ function localCompute(re){
     notes=[`기준시각 t=${S.now} 이전에 착수한 ${frozen.length}개 공정을 고정하고 나머지 ${totalOps-frozen.length}개를 재배정했습니다.`,...clip.notes];
     opts={breakdowns:clip.out,frozen,now:S.now};
   }
-  const s=solve(S.orders,inst().nm,S.rule,opts,mode,S.obj,iters);
+  const s=solve(orders,inst().nm,S.rule,opts,mode,S.obj,iters);
   Object.assign(s,{status:mode==="rule"?"RULE":"BROWSER",solver:mode==="rule"?"rule":"browser",
     objective:S.obj,solveSeconds:(performance.now()-t0)/1000,source:"browser",now:re?S.now:0});
   return {sched:s,notes};
 }
 async function computeSchedule(re){
   if(SRV.state==="ok"){
-    const body={orders:S.orders.map(orderPayload),numMachines:inst().nm,solver:effectiveSolver(),objective:S.obj,
+    const body={orders:(re?S.orders:baseOrders()).map(orderPayload),numMachines:inst().nm,solver:effectiveSolver(),objective:S.obj,
       rule:S.rule,timeLimit:S.timeLimit,restarts:S.restarts};
     if(re) Object.assign(body,{now:S.now,breakdowns:S.breakdowns,baseOps:S.base.placed,baseMeta:metaOf(S.base)});
     try{
@@ -906,7 +909,8 @@ function renderGantt(el,sched,view,opts){
   const nm=inst().nm, orders=S.orders;
   const rows = view==="machine"
     ? Array.from({length:nm},(_,m)=>({key:m,label:"M"+m,ops:sched.placed.filter(p=>p.machine===m)}))
-    : orders.map((o,i)=>({key:o.id,label:o.id,job:o,ops:sched.placed.filter(p=>p.jobId===o.id)}));
+    : orders.filter(o=>sched.placed.some(p=>p.jobId===o.id))
+            .map(o=>({key:o.id,label:o.id,job:o,ops:sched.placed.filter(p=>p.jobId===o.id)}));
   const maxT=Math.max(sched.makespan, ...orders.map(o=>o.due), 1);
   const padL=46, padR=30, padT=opts.compact?22:26, rowH=opts.compact?22:27, gap=opts.compact?5:7;
   const px=Math.max(opts.compact?0.6:0.9, Math.min(16, (opts.compact?560:760)/maxT));
@@ -1135,7 +1139,7 @@ function renderPlan(){
       <td class="n">${p.opIdx+1}</td><td class="n">M${p.machine}</td><td class="n">${p.start}</td><td class="n">${p.end}</td>
       <td class="n">${p.end-p.start}</td><td>${p.frozen?"고정":""}</td></tr>`).join("")+`</tbody>`;
   const cmp=Object.keys(RULES).map(r=>{
-    const s=schedule(S.orders,inst().nm,r,{});
+    const s=schedule(baseOrders(),inst().nm,r,{});
     return {r,label:RULES[r].label,mk:s.makespan,tt:s.totalTardiness,nt:s.numTardy,ot:s.onTimeRate,au:s.avgUtil};
   });
   const bestTT=Math.min(...cmp.map(c=>c.tt)), bestMK=Math.min(...cmp.map(c=>c.mk));
@@ -1175,7 +1179,7 @@ function renderEvent(){
     S.breakdowns.splice(+b.dataset.bd,1); S.re=null; S.notes=[]; renderAll();
   }));
   $("evList").querySelectorAll("[data-uo]").forEach(b=>b.addEventListener("click",()=>{
-    S.orders=S.orders.filter(o=>o.id!==b.dataset.uo); enqueue(taskBase);
+    S.orders=S.orders.filter(o=>o.id!==b.dataset.uo); S.re=null; S.notes=[]; enqueue(fixOrphans);
   }));
   $("reCard").hidden=!S.re;
   if(S.re){
@@ -1766,8 +1770,8 @@ function init(){
       const ops=randomRoute(n,20251025+S.uoSeq+1);
       const warns=validateUrgent(r,d,ops,inst().nm);
       const id=addUrgent(r,d,ops);
-      setMsgs("uoMsg",[["ok",`긴급 주문 ${id} 를 등록했습니다 — ${ops.map(x=>`M${x.machine}·${x.dur}`).join(" → ")}`],...msgs,...warns.map(w=>["warn",w])]);
-      enqueue(taskBase);
+      setMsgs("uoMsg",[["ok",`긴급 주문 ${id} 를 등록했습니다 — ${ops.map(x=>`M${x.machine}·${x.dur}`).join(" → ")}. ‘잔여 일정 재계산’을 누르면 초기 일정에 끼워 넣습니다.`],...msgs,...warns.map(w=>["warn",w])]);
+      S.re=null; S.notes=[]; renderAll();
     }catch(e){ setMsgs("uoMsg",[["err",e.message]]); }
   });
   $("runRe").addEventListener("click",()=>enqueue(async()=>{ await taskRe(); showTab("diff",true); window.scrollTo({top:0}); }));
