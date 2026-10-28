@@ -138,7 +138,7 @@ main{min-width:0; padding-block:0 26px;
 
 /* ───── 조회조건 영역 ───── */
 .srch{border:1px solid var(--line); border-radius:4px; overflow:hidden; background:var(--surface)}
-.srch-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(272px,1fr))}
+.srch-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr))}
 .srch-row{display:grid; grid-template-columns:98px minmax(0,1fr); border-bottom:1px solid var(--line-soft);
   border-right:1px solid var(--line-soft); min-width:0}
 .srch-row .lb{background:var(--surface-2); padding:7px 10px; font-size:11.5px; font-weight:600; color:var(--ink-2);
@@ -190,9 +190,15 @@ input[type=range]{width:100%; accent-color:var(--accent); padding:0; border:0; b
 .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .btn:disabled{opacity:.5; cursor:not-allowed}
 .btnrow{display:flex; gap:6px; flex-wrap:wrap; margin-top:2px}
-.seg{display:inline-flex; border:1px solid var(--rail); border-radius:3px; overflow:hidden; background:var(--surface)}
+.seg{display:inline-flex; flex-wrap:wrap; max-width:100%;
+  border:1px solid var(--rail); border-radius:3px; overflow:hidden; background:var(--surface)}
 .seg button{appearance:none; border:0; background:transparent; font:inherit; font-size:11.5px; font-weight:500;
-  padding:5px 11px; color:var(--ink-2); cursor:pointer; white-space:nowrap; border-left:1px solid var(--line-soft)}
+  padding:5px 10px; color:var(--ink-2); cursor:pointer; border-left:1px solid var(--line-soft);
+  flex:0 1 auto; min-width:0; text-align:center; line-height:1.3;
+  white-space:normal; word-break:keep-all; overflow-wrap:anywhere}
+/* 조회조건 칸 안에서는 세그먼트가 셀 폭을 채우되, 버튼 폭은 글자 길이에 맞춘다 */
+.srch-row .fd > .seg{width:100%}
+.srch-row .fd > .seg button{flex:1 1 auto}
 .seg button:first-child{border-left:0}
 .seg button[aria-pressed="true"]{background:var(--accent); color:#fff; font-weight:700}
 .seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
@@ -319,6 +325,7 @@ dialog .df{display:flex; justify-content:flex-end; gap:6px; padding:10px 14px; b
   .lnb-item[aria-selected="true"]{border-left-color:transparent; border-bottom-color:var(--accent)}
 }
 @media (max-width:560px){
+  .gnb .sys span:not(.mark){display:none}   /* 영문 부제는 좁은 화면에서 숨김 (nowrap 이라 가로스크롤 유발) */
   .kpi .v{font-size:21px}
   .srch-row{grid-template-columns:86px minmax(0,1fr)}
   .pagebar h1{font-size:17px}
